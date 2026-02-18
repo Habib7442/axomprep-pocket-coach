@@ -42,6 +42,32 @@ async function callGemini(endpoint: string, body: any) {
 }
 
 /**
+ * Returns raw response for streaming/standard use in API routes
+ */
+export async function generateGeminiText(prompt: string, type?: string) {
+  return fetch(`${ENDPOINTS.TEXT}?key=${API_KEY}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      contents: [{ parts: [{ text: prompt }] }]
+    }),
+  });
+}
+
+export async function generateGeminiImage(prompt: string) {
+  return fetch(`${ENDPOINTS.IMAGE}?key=${API_KEY}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      contents: [{ parts: [{ text: prompt }] }],
+      generationConfig: {
+        imageConfig: { aspectRatio: "1:1" }
+      }
+    }),
+  });
+}
+
+/**
  * Extracts Instagram metrics from a base64 image
  */
 export async function extractMetricsFromImage(base64Data: string) {
