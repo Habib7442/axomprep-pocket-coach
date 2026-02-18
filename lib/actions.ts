@@ -1,0 +1,135 @@
+'use server';
+
+import { auth, currentUser } from "@clerk/nextjs/server";
+import { createSupabaseServer } from "@/lib/supabase-server";
+import { revalidatePath } from "next/cache";
+
+export const syncUser = async () => {
+    const { userId } = await auth();
+    const user = await currentUser();
+    
+    if (!userId || !user) {
+        return null;
+    }
+
+    const supabase = await createSupabaseServer();
+    
+    const { data, error } = await supabase
+        .from('users')
+        .upsert({
+            clerk_id: userId,
+            email: user.primaryEmailAddress?.emailAddress,
+            tier: 'free' // Default tier
+        }, {
+            onConflict: 'clerk_id'
+        })
+        .select()
+        .single();
+
+    if (error) {
+        console.error('Error syncing user:', error.message);
+        return null;
+    }
+
+    return data;
+};
+
+export const getCoaches = async () => {
+    const { userId } = await auth();
+    if (!userId) return [];
+
+    const supabase = await createSupabaseServer();
+    const { data, error } = await supabase
+        .from('coaches')
+        .select('*')
+        .order('created_at', { ascending: false });
+
+    if (error) {
+        console.error('Error fetching coaches:', error.message);
+        return [];
+    }
+
+    return data;
+};
+
+export const getUserTier = async () => {
+    const { userId } = await auth();
+    if (!userId) return 'free';
+
+    const supabase = await createSupabaseServer();
+    const { data, error } = await supabase
+        .from('users')
+        .select('tier')
+        .eq('clerk_id', userId)
+        .single();
+
+    if (error || !data) return 'free';
+    return data.tier;
+};
+
+export const getCoach = async (id: string) => {
+    const { userId } = await auth();
+    if (!userId) return null;
+
+    const supabase = await createSupabaseServer();
+    const { data, error } = await supabase
+        .from('coaches')
+        .select('*')
+        .eq('id', id)
+        .single();
+
+    if (error) {
+        console.error('Error fetching coach:', error.message);
+        return null;
+    }
+
+    return data;
+};
+
+export const getMessages = async (coachId: string) => {
+    const { userId } = await auth();
+    if (!userId) return [];
+
+    const supabase = await createSupabaseServer();
+    const { data, error } = await supabase
+        .from('messages') 
+        .select('*')
+        .eq('coach_id', coachId)
+        .order('created_at', { ascending: true });
+
+    if (error) {
+        console.error('Error fetching messages:', error.message);
+        return [];
+    }
+
+    // Map to Message interface
+    return data.map(m => ({
+        role: m.role,
+        content: m.content
+    }));
+};
+
+export const createCoach = async (coachData: any) => {
+    const user = await currentUser();
+    
+    if (!user) {
+      return { data: null, error: "Unauthorized" };
+    }
+
+    const supabase = await createSupabaseServer();
+    const { data, error } = await supabase
+        .from('coaches')
+        .insert([{
+            ...coachData,
+            user_id: user.id
+        }])
+        .select()
+        .single();
+
+    if (error) {
+        return { data: null, error: error.message };
+    }
+
+    revalidatePath('/dashboard');
+    return { data, error: null };
+};
