@@ -1,6 +1,12 @@
-import { clerkMiddleware } from "@clerk/nextjs/server";
+import { clerkMiddleware, createRouteMatcher } from "@clerk/nextjs/server";
+
+const isDashboardRoute = createRouteMatcher(["/dashboard(.*)"]);
 
 export default clerkMiddleware(async (auth, req) => {
+    if (isDashboardRoute(req)) {
+        await auth.protect();
+    }
+    
     const { userId } = await auth();
     console.log(`PROXY: ${req.method} ${req.nextUrl.pathname} - User: ${userId || "NONE"}`);
 });
