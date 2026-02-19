@@ -3,9 +3,9 @@
 const API_KEY = process.env.GEMINI_API_KEY || "";
 
 const ENDPOINTS = {
-  VISION: "https://generativelanguage.googleapis.com/v1alpha/models/gemini-3-flash-preview:generateContent",
-  TEXT: "https://generativelanguage.googleapis.com/v1alpha/models/gemini-3-flash-preview:generateContent",
-  IMAGE: "https://generativelanguage.googleapis.com/v1beta/models/gemini-3-pro-image-preview:generateContent"
+  VISION: "https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent",
+  TEXT: "https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent",
+  IMAGE: "https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent"
 };
 
 async function callGemini(endpoint: string, body: any) {

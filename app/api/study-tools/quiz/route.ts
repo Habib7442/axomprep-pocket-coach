@@ -1,11 +1,11 @@
-
 import { NextResponse } from 'next/server';
-import { supabase } from '@/lib/supabase';
+import { createSupabaseAdmin } from '@/lib/supabase-server';
 import { generateTextResponse } from '@/lib/gemini';
 
 export async function POST(req: Request) {
   try {
     const { coachId, topic, language } = await req.json();
+    console.log('QUIZ_GEN: Starting for', { coachId, topic });
 
     const prompt = `Generate a 15-question multiple choice quiz about "${topic}" in ${language}. 
     Each question should have 4 options and 1 correct answer (index 0-3). 
@@ -18,10 +18,11 @@ export async function POST(req: Request) {
     try {
       quizData = JSON.parse(text.replace(/```json\n|```/g, "").trim());
     } catch (e) {
-      console.error("JSON Parse Error:", text);
+      console.error("QUIZ_GEN: JSON Parse Error", text);
       throw new Error("Failed to parse quiz JSON");
     }
 
+    const supabase = createSupabaseAdmin();
     const { data, error } = await supabase
       .from('quizzes')
       .insert({
@@ -31,8 +32,12 @@ export async function POST(req: Request) {
       .select()
       .single();
 
-    if (error) throw error;
+    if (error) {
+       console.error('QUIZ_GEN: Supabase Error', error);
+       throw error;
+    }
 
+    console.log('QUIZ_GEN: Success');
     return NextResponse.json(data);
   } catch (error: any) {
     console.error("Quiz Generation Error:", error);
