@@ -12,25 +12,28 @@ export const POST = Webhooks({
   // Webhook adaptor expects event handlers
   // The official adaptor uses 'on' prefix for events
   onPaymentSucceeded: async (event: any) => {
-    console.log("Dodo Webhook: Payment Succeeded", event);
+    console.log("Dodo Webhook: Payment Succeeded", { session_id: event.data.session_id });
     const clerkId = event.data.metadata?.clerk_id;
     if (!clerkId) {
-      console.error("Dodo Webhook: Missing clerk_id in payment metadata", event.data);
+      console.error("Dodo Webhook: Missing clerk_id in payment metadata", { session_id: event.data.session_id });
       return;
     }
 
     const supabase = createSupabaseAdmin();
     
-    // 1. Idempotency check: Check if this session was already processed
-    const { data: existing } = await supabase
-      .from("transactions")
-      .select("id")
-      .eq("dodo_session_id", event.data.session_id)
-      .single();
-    
-    if (existing) {
-      console.log("Dodo Webhook: Payment already processed", event.data.session_id);
-      return;
+    // 1. Atomic Upsert for idempotency and racing prevention
+    const { error: insertError } = await supabase.from("transactions").upsert({
+      clerk_id: clerkId,
+      dodo_session_id: event.data.session_id,
+      amount: event.data.total_amount / 100,
+      currency: event.data.currency,
+      status: "completed",
+      metadata: event.data
+    }, { onConflict: 'dodo_session_id' });
+
+    if (insertError) {
+      console.error("Dodo Webhook: Failed to process transaction", insertError);
+      throw insertError;
     }
 
     // 2. Update user tier
@@ -41,44 +44,32 @@ export const POST = Webhooks({
 
     if (updateError) {
       console.error("Dodo Webhook: Failed to update user tier", updateError);
-      throw updateError; // Rethrow to signal failure to Dodo for retries
-    }
-
-    // 3. Save transaction record
-    const { error: insertError } = await supabase.from("transactions").insert({
-      clerk_id: clerkId,
-      dodo_session_id: event.data.session_id,
-      amount: event.data.total_amount / 100,
-      currency: event.data.currency,
-      status: "completed",
-      metadata: event.data
-    });
-
-    if (insertError) {
-      console.error("Dodo Webhook: Failed to insert transaction", insertError);
-      throw insertError;
+      throw updateError;
     }
   },
   onSubscriptionActive: async (event: any) => {
-    console.log("Dodo Webhook: Subscription Active", event);
+    console.log("Dodo Webhook: Subscription Active", { subscription_id: event.data.subscription_id });
     const clerkId = event.data.metadata?.clerk_id;
     if (!clerkId) {
-      console.error("Dodo Webhook: Missing clerk_id in subscription metadata", event.data);
+      console.error("Dodo Webhook: Missing clerk_id in subscription metadata", { subscription_id: event.data.subscription_id });
       return;
     }
 
     const supabase = createSupabaseAdmin();
 
-    // 1. Idempotency check: Check if this subscription was already processed
-    const { data: existing } = await supabase
-      .from("transactions")
-      .select("id")
-      .eq("dodo_session_id", event.data.subscription_id)
-      .single();
-    
-    if (existing) {
-      console.log("Dodo Webhook: Subscription already processed", event.data.subscription_id);
-      return;
+    // 1. Atomic Upsert for idempotency and racing prevention
+    const { error: insertError } = await supabase.from("transactions").upsert({
+      clerk_id: clerkId,
+      dodo_session_id: event.data.subscription_id, 
+      amount: event.data.total_amount / 100,
+      currency: event.data.currency,
+      status: "active",
+      metadata: event.data
+    }, { onConflict: 'dodo_session_id' });
+
+    if (insertError) {
+      console.error("Dodo Webhook: Failed to process transaction", insertError);
+      throw insertError;
     }
     
     // 2. Update user tier
@@ -90,21 +81,6 @@ export const POST = Webhooks({
     if (updateError) {
       console.error("Dodo Webhook: Failed to update user tier", updateError);
       throw updateError;
-    }
-
-    // 3. Save transaction record
-    const { error: insertError } = await supabase.from("transactions").insert({
-      clerk_id: clerkId,
-      dodo_session_id: event.data.subscription_id, 
-      amount: event.data.total_amount / 100,
-      currency: event.data.currency,
-      status: "active",
-      metadata: event.data
-    });
-
-    if (insertError) {
-      console.error("Dodo Webhook: Failed to insert transaction", insertError);
-      throw insertError;
     }
   }
 } as any);
