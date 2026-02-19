@@ -1,5 +1,6 @@
 import Link from "next/link";
-import { ArrowRight, MessageSquare, Zap, BookOpen } from "lucide-react";
+import { ArrowRight, BrainCircuit, Mic2, FileSearch, Sparkles, GraduationCap, ChevronRight, Check, Zap, MessageSquare, BookOpen } from "lucide-react";
+import PricingButton from "@/components/checkout/PricingButton";
 import { SignedIn, SignedOut, SignInButton } from "@clerk/nextjs";
 
 export default function Home() {
@@ -93,7 +94,7 @@ export default function Home() {
               <div className="space-y-2">
                 <span className="text-[10px] font-black uppercase tracking-[0.3em] text-primary">Ultimate Prep Pass</span>
                 <div className="flex items-baseline justify-center gap-1">
-                  <span className="text-6xl md:text-8xl font-black tracking-tighter">₹199</span>
+                  <span className="text-6xl md:text-8xl font-black tracking-tighter">₹20</span>
                   <span className="text-zinc-500 font-bold">/mo</span>
                 </div>
               </div>
@@ -114,9 +115,7 @@ export default function Home() {
                 ))}
               </div>
 
-              <button disabled className="w-full md:w-auto px-16 py-6 rounded-2xl bg-zinc-900 border border-zinc-800 text-zinc-400 font-black uppercase tracking-widest text-xs transition-all opacity-50 cursor-not-allowed">
-                Coming Soon
-              </button>
+              <PricingButton productId={process.env.NEXT_PUBLIC_DODO_PRODUCT_ID || "p_placeholder"} />
               
               <p className="text-[8px] font-bold text-zinc-500 uppercase tracking-widest">Pricing will adjust based on school academic cycles.</p>
             </div>

@@ -117,6 +117,33 @@ export const createCoach = async (coachData: any) => {
     }
 
     const supabase = await createSupabaseServer();
+    
+    // 1. Check user tier
+    const tier = await getUserTier();
+    
+    // 2. Count coaches for this month
+    const startOfMonth = new Date();
+    startOfMonth.setDate(1);
+    startOfMonth.setHours(0, 0, 0, 0);
+    
+    const { count, error: countError } = await supabase
+        .from('coaches')
+        .select('*', { count: 'exact', head: true })
+        .eq('user_id', user.id)
+        .gte('created_at', startOfMonth.toISOString());
+
+    if (countError) {
+        return { data: null, error: countError.message };
+    }
+
+    const limit = tier === 'pro' ? 20 : 2;
+    if ((count || 0) >= limit) {
+        return { 
+            data: null, 
+            error: `Monthly limit reached. ${tier === 'pro' ? 'Paid' : 'Free'} users can create up to ${limit} coaches per month.` 
+        };
+    }
+
     const { data, error } = await supabase
         .from('coaches')
         .insert([{

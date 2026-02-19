@@ -43,6 +43,16 @@ import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 
 interface Coach {
   id: string;
@@ -80,6 +90,7 @@ export default function DashboardClient({ initialCoaches, initialTier }: Dashboa
   const [pdfFile, setPdfFile] = useState<File | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [userTier] = useState<string>(initialTier);
+  const [showLimitAlert, setShowLimitAlert] = useState(false);
 
 
   const handleCreateCoach = async (e: React.FormEvent) => {
@@ -130,7 +141,11 @@ export default function DashboardClient({ initialCoaches, initialTier }: Dashboa
     setCreating(false);
     
     if (creationError) {
-      toast.error("Error creating coach");
+      if (creationError.includes("Monthly limit reached")) {
+        setShowLimitAlert(true);
+      } else {
+        toast.error("Error creating coach");
+      }
     } else if (createdCoach) {
       toast.success("Coach created successfully!");
       setName("");
@@ -367,6 +382,35 @@ export default function DashboardClient({ initialCoaches, initialTier }: Dashboa
           </Card>
         </div>
       </main>
+
+      {/* Limit Alert Dialog */}
+      <AlertDialog open={showLimitAlert} onOpenChange={setShowLimitAlert}>
+        <AlertDialogContent className="bg-zinc-950 border-zinc-900 text-white rounded-[2rem] p-8">
+          <AlertDialogHeader className="items-center text-center">
+            <div className="w-16 h-16 rounded-full bg-primary/10 flex items-center justify-center mb-4">
+              <Sparkles className="w-8 h-8 text-primary animate-pulse" />
+            </div>
+            <AlertDialogTitle className="text-3xl font-black tracking-tighter">
+              Upgrade to <span className="font-serif italic text-primary">Pro</span>
+            </AlertDialogTitle>
+            <AlertDialogDescription className="text-zinc-400 font-medium text-lg leading-relaxed">
+              You&apos;ve reached your free monthly limit of 2 coaches. <br />
+              Upgrade to the **Ultimate Prep Pass** to create up to **20 coaches**, 24/7 voice coaching, and more!
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter className="flex-col sm:flex-row gap-4 mt-6">
+            <AlertDialogCancel className="bg-zinc-900 border-zinc-800 text-zinc-400 hover:bg-zinc-800 rounded-xl h-14 font-bold border-0">
+              Maybe Later
+            </AlertDialogCancel>
+            <AlertDialogAction 
+              onClick={() => router.push('/#pricing')}
+              className="bg-primary text-primary-foreground hover:opacity-90 rounded-xl h-14 font-black text-lg px-8 shadow-2xl shadow-primary/20"
+            >
+              Get Prep Pass ₹20
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

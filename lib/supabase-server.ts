@@ -24,3 +24,18 @@ export const createSupabaseServer = async () => {
     },
   });
 };
+/**
+ * Admin client for backend operations (e.g. Webhooks) that bypass RLS.
+ * Requires SUPABASE_SERVICE_ROLE_KEY.
+ */
+export const createSupabaseAdmin = () => {
+  const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  if (!serviceKey) throw new Error("SUPABASE_SERVICE_ROLE_KEY is not configured");
+  
+  return createClient(supabaseUrl, serviceKey, {
+    auth: {
+      autoRefreshToken: false,
+      persistSession: false
+    }
+  });
+};

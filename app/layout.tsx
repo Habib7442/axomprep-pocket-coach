@@ -76,10 +76,10 @@ export default function RootLayout({
             </div>
             <div className="flex items-center gap-6 text-sm font-medium">
               <SignedOut>
-                <SignInButton mode="modal">
+                <SignInButton mode="modal" fallbackRedirectUrl="/dashboard">
                   <button className="text-zinc-400 hover:text-white transition-colors">Sign In</button>
                 </SignInButton>
-                <SignUpButton mode="modal">
+                <SignUpButton mode="modal" fallbackRedirectUrl="/dashboard">
                   <button className="px-5 py-2 rounded-xl bg-primary text-primary-foreground hover:opacity-90 transition-opacity font-bold">Join Now</button>
                 </SignUpButton>
               </SignedOut>
