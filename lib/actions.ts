@@ -76,7 +76,7 @@ export const getUserTier = async () => {
     const { userId } = await auth();
     if (!userId) return 'free';
 
-    const supabase = await createSupabaseServer();
+    const supabase = createSupabaseAdmin();
     const { data, error } = await supabase
         .from('users')
         .select('tier')
@@ -148,7 +148,7 @@ export const validateCoachCreation = async () => {
     }
 
     console.log('VALIDATE_COACH: Checking limits for', user.id);
-    const supabase = await createSupabaseServer();
+    const supabase = createSupabaseAdmin();
     const tier = await getUserTier();
     console.log('VALIDATE_COACH: User Tier is', tier);
     
@@ -189,7 +189,8 @@ export const createCoach = async (coachData: any) => {
       return { data: null, error: "Unauthorized" };
     }
 
-    const supabase = await createSupabaseServer();
+    console.log('CREATE_COACH: Inserting coach for', user.id);
+    const supabase = createSupabaseAdmin();
     
     // 1. Check user tier
     const tier = await getUserTier();
@@ -205,6 +206,7 @@ export const createCoach = async (coachData: any) => {
         .gte('created_at', startOfMonth.toISOString());
 
     if (countError) {
+        console.error('CREATE_COACH: Failed to fetch count', countError);
         return { data: null, error: countError.message };
     }
 
