@@ -57,7 +57,8 @@ export const getCoaches = async () => {
     const { userId } = await auth();
     if (!userId) return [];
 
-    const supabase = await createSupabaseServer();
+    // Use Admin client for fetching to bypass RLS token issues in production
+    const supabase = createSupabaseAdmin();
     const { data, error } = await supabase
         .from('coaches')
         .select('*')
@@ -101,7 +102,7 @@ export const getCoach = async (id: string) => {
     const { userId } = await auth();
     if (!userId) return null;
 
-    const supabase = await createSupabaseServer();
+    const supabase = createSupabaseAdmin();
     const { data, error } = await supabase
         .from('coaches')
         .select('*')
@@ -121,7 +122,18 @@ export const getMessages = async (coachId: string) => {
     const { userId } = await auth();
     if (!userId) return [];
 
-    const supabase = await createSupabaseServer();
+    const supabase = createSupabaseAdmin();
+    
+    // First verify coach ownership
+    const { data: coach } = await supabase
+        .from('coaches')
+        .select('id')
+        .eq('id', coachId)
+        .eq('user_id', userId)
+        .single();
+        
+    if (!coach) return [];
+
     const { data, error } = await supabase
         .from('messages') 
         .select('*')
