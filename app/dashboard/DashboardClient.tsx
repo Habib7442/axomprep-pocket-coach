@@ -1,8 +1,8 @@
 "use client";
 
 import { useState, useRef, useEffect } from "react";
-import { useUser } from "@clerk/nextjs";
-import { supabase } from "@/lib/supabase";
+import { useUser, useAuth } from "@clerk/nextjs";
+import { supabase, createClerkSupabaseClient } from "@/lib/supabase";
 import { createCoach, validateCoachCreation } from "@/lib/actions";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
@@ -72,6 +72,7 @@ interface DashboardClientProps {
 
 export default function DashboardClient({ initialCoaches, initialTier }: DashboardClientProps) {
   const { user } = useUser();
+  const { getToken } = useAuth();
   const router = useRouter();
   const [coaches, setCoaches] = useState<Coach[]>(initialCoaches);
   const [mounted, setMounted] = useState(false);
@@ -126,7 +127,10 @@ export default function DashboardClient({ initialCoaches, initialTier }: Dashboa
       const fileName = `${Math.random()}.${fileExt}`;
       const filePath = `${user?.id}/${fileName}`;
 
-      const { error: uploadError } = await supabase.storage
+      const token = await getToken({ template: 'supabase' });
+      const authSupabase = createClerkSupabaseClient(token || "");
+
+      const { error: uploadError } = await authSupabase.storage
         .from('coaches_pdfs')
         .upload(filePath, pdfFile);
 

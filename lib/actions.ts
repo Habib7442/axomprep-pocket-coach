@@ -156,7 +156,14 @@ export const validateCoachCreation = async () => {
         .eq('user_id', user.id)
         .gte('created_at', startOfMonth.toISOString());
 
-    if (error) return { allowed: false, error: error.message };
+    if (error) {
+        console.error('VALIDATE_COACH: Failed to fetch count', {
+            userId: user.id,
+            error: error.message,
+            code: error.code
+        });
+        return { allowed: false, error: error.message };
+    }
 
     const limit = tier === 'pro' ? 20 : 2;
     if ((count || 0) >= limit) {
@@ -215,6 +222,13 @@ export const createCoach = async (coachData: any) => {
         .single();
 
     if (error) {
+        console.error('CREATE_COACH: Failed to insert', {
+            userId: user.id,
+            error: error.message,
+            code: error.code,
+            details: error.details,
+            hint: error.hint
+        });
         return { data: null, error: error.message };
     }
 
