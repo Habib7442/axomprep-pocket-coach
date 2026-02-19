@@ -1,7 +1,7 @@
 'use server';
 
 import { auth, currentUser } from "@clerk/nextjs/server";
-import { createSupabaseServer } from "@/lib/supabase-server";
+import { createSupabaseServer, createSupabaseAdmin } from "@/lib/supabase-server";
 import { revalidatePath } from "next/cache";
 
 export const syncUser = async () => {
@@ -12,7 +12,13 @@ export const syncUser = async () => {
         return null;
     }
 
-    const supabase = await createSupabaseServer();
+    // Use Admin client for sync to bypass initial RLS/bootstrap issues in production
+    const supabase = createSupabaseAdmin();
+
+    console.log('SYNC_USER: Attempting sync (Admin)', { 
+        userId, 
+        email: user.primaryEmailAddress?.emailAddress 
+    });
     
     const { data, error } = await supabase
         .from('users')
@@ -27,9 +33,16 @@ export const syncUser = async () => {
         .single();
 
     if (error) {
-        console.error('Error syncing user:', error.message);
+        console.error('SYNC_USER: Failed', {
+            code: error.code,
+            message: error.message,
+            details: error.details,
+            hint: error.hint
+        });
         return null;
     }
+
+    console.log('SYNC_USER: Success', { id: data.id });
 
     return data;
 };
@@ -64,7 +77,17 @@ export const getUserTier = async () => {
         .eq('clerk_id', userId)
         .single();
 
-    if (error || !data) return 'free';
+    if (error || !data) {
+        if (error && error.code !== 'PGRST116') { // PGRST116 is "no rows found"
+            console.error('GET_USER_TIER: Failed', {
+                userId,
+                code: error.code,
+                message: error.message
+            });
+        }
+        return 'free';
+    }
+    
     return data.tier;
 };
 
