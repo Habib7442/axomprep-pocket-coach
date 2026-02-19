@@ -74,11 +74,14 @@ export default function DashboardClient({ initialCoaches, initialTier }: Dashboa
   const { user } = useUser();
   const router = useRouter();
   const [coaches, setCoaches] = useState<Coach[]>(initialCoaches);
+  const [mounted, setMounted] = useState(false);
   
-  // Sync state with server data
+  // Sync state with server data and handle hydration
   useEffect(() => {
+    setMounted(true);
     setCoaches(initialCoaches);
   }, [initialCoaches]);
+
   const [creating, setCreating] = useState(false);
   
   // Form State
@@ -91,6 +94,8 @@ export default function DashboardClient({ initialCoaches, initialTier }: Dashboa
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [userTier] = useState<string>(initialTier);
   const [showLimitAlert, setShowLimitAlert] = useState(false);
+
+  if (!mounted) return null;
 
 
   const handleCreateCoach = async (e: React.FormEvent) => {
@@ -419,7 +424,7 @@ export default function DashboardClient({ initialCoaches, initialTier }: Dashboa
               onClick={() => router.push('/#pricing')}
               className="bg-primary text-primary-foreground hover:opacity-90 rounded-xl h-14 font-black text-lg px-8 shadow-2xl shadow-primary/20"
             >
-              Get Prep Pass ₹20
+              Get Prep Pass ₹100
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

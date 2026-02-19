@@ -94,7 +94,7 @@ export default function Home() {
               <div className="space-y-2">
                 <span className="text-[10px] font-black uppercase tracking-[0.3em] text-primary">Ultimate Prep Pass</span>
                 <div className="flex items-baseline justify-center gap-1">
-                  <span className="text-6xl md:text-8xl font-black tracking-tighter">₹20</span>
+                  <span className="text-6xl md:text-8xl font-black tracking-tighter">₹100</span>
                   <span className="text-zinc-500 font-bold">/mo</span>
                 </div>
               </div>

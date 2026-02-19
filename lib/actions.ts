@@ -42,6 +42,7 @@ export const getCoaches = async () => {
     const { data, error } = await supabase
         .from('coaches')
         .select('*')
+        .eq('user_id', userId)
         .order('created_at', { ascending: false });
 
     if (error) {
@@ -76,6 +77,7 @@ export const getCoach = async (id: string) => {
         .from('coaches')
         .select('*')
         .eq('id', id)
+        .eq('user_id', userId)
         .single();
 
     if (error) {
