@@ -142,10 +142,15 @@ export const getMessages = async (coachId: string) => {
 
 export const validateCoachCreation = async () => {
     const user = await currentUser();
-    if (!user) return { allowed: false, error: "Unauthorized" };
+    if (!user) {
+        console.error('VALIDATE_COACH: No user found');
+        return { allowed: false, error: "Unauthorized" };
+    }
 
+    console.log('VALIDATE_COACH: Checking limits for', user.id);
     const supabase = await createSupabaseServer();
     const tier = await getUserTier();
+    console.log('VALIDATE_COACH: User Tier is', tier);
     
     const now = new Date();
     const startOfMonth = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1, 0, 0, 0, 0));
