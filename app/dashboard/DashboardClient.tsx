@@ -106,10 +106,13 @@ export default function DashboardClient({ initialCoaches, initialTier }: Dashboa
       return;
     }
 
+    console.log('CREATE_COACH_FLOW: Starting', { name, topic, language });
     setCreating(true);
 
     // 1. Validate limit BEFORE uploading PDF
     const validation = await validateCoachCreation();
+    console.log('CREATE_COACH_FLOW: Validation result', validation);
+    
     if (!validation.allowed) {
       setCreating(false);
       if (validation.errorCode === "LIMIT_REACHED") {
@@ -123,6 +126,7 @@ export default function DashboardClient({ initialCoaches, initialTier }: Dashboa
     let pdfUrl = null;
 
     if (pdfFile) {
+      console.log('CREATE_COACH_FLOW: Uploading PDF...', pdfFile.name);
       const fileExt = pdfFile.name.split('.').pop();
       const fileName = `${Math.random()}.${fileExt}`;
       const filePath = `${user?.id}/${fileName}`;
@@ -135,7 +139,7 @@ export default function DashboardClient({ initialCoaches, initialTier }: Dashboa
         .upload(filePath, pdfFile);
 
       if (uploadError) {
-        console.error('Upload error:', uploadError);
+        console.error('CREATE_COACH_FLOW: Upload error', uploadError);
         toast.error("Failed to upload PDF");
         setCreating(false);
         return;
@@ -146,9 +150,11 @@ export default function DashboardClient({ initialCoaches, initialTier }: Dashboa
         .getPublicUrl(filePath);
       
       pdfUrl = publicUrl;
+      console.log('CREATE_COACH_FLOW: PDF uploaded successfully', pdfUrl);
     }
 
-    const { data: createdCoach, error: creationError, errorCode } = await createCoach({
+    console.log('CREATE_COACH_FLOW: Calling createCoach server action...');
+    const result = await createCoach({
       name,
       topic,
       language,
@@ -157,29 +163,25 @@ export default function DashboardClient({ initialCoaches, initialTier }: Dashboa
       pdf_url: pdfUrl
     }) as any;
     
-    // Refresh the page data via next/navigation
-    router.refresh();
+    console.log('CREATE_COACH_FLOW: Action response', result);
 
-    setCreating(false);
-    
+    const { data: createdCoach, error: creationError } = result;
+
     if (creationError) {
-      if (errorCode === "LIMIT_REACHED") {
-        setShowLimitAlert(true);
-      } else {
-        toast.error("Error creating coach");
-      }
-    } else if (createdCoach) {
-      toast.success("Coach created successfully!");
-      setName("");
-      setTopic("");
-      setLanguage("");
-      setClassName("");
-      setExamName("");
-      setPdfFile(null);
-      
-      // Automatically navigate to the new coach's chat page
-      router.push(`/dashboard/coach/${createdCoach.id}`);
+      console.error('CREATE_COACH_FLOW: Creation failed', creationError);
+      toast.error(creationError || "Failed to create coach");
+      setCreating(false);
+      return;
     }
+
+    console.log('CREATE_COACH_FLOW: Coach created successfully', createdCoach);
+    toast.success("Coach summoned successfully!");
+    
+    // Refresh the page data and clear form
+    router.refresh();
+    
+    // Automatically navigate to the new coach's chat page
+    router.push(`/dashboard/coach/${createdCoach.id}`);
   };
 
   const SidebarContent = () => (
