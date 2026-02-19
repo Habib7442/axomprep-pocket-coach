@@ -115,7 +115,16 @@ export default function Home() {
                 ))}
               </div>
 
-              <PricingButton productId={process.env.NEXT_PUBLIC_DODO_PRODUCT_ID || "p_placeholder"} />
+              {process.env.NEXT_PUBLIC_DODO_PRODUCT_ID ? (
+                <PricingButton productId={process.env.NEXT_PUBLIC_DODO_PRODUCT_ID} />
+              ) : (
+                <button 
+                  disabled 
+                  className="w-full md:w-auto px-16 py-6 rounded-2xl bg-zinc-900 border border-zinc-800 text-zinc-400 font-black uppercase tracking-widest text-xs transition-all opacity-50 cursor-not-allowed"
+                >
+                  Coming Soon
+                </button>
+              )}
               
               <p className="text-[8px] font-bold text-zinc-500 uppercase tracking-widest">Pricing will adjust based on school academic cycles.</p>
             </div>

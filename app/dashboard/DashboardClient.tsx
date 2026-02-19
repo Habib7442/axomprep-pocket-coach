@@ -3,7 +3,7 @@
 import { useState, useRef, useEffect } from "react";
 import { useUser } from "@clerk/nextjs";
 import { supabase } from "@/lib/supabase";
-import { createCoach } from "@/lib/actions";
+import { createCoach, validateCoachCreation } from "@/lib/actions";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { 
@@ -101,6 +101,19 @@ export default function DashboardClient({ initialCoaches, initialTier }: Dashboa
     }
 
     setCreating(true);
+
+    // 1. Validate limit BEFORE uploading PDF
+    const validation = await validateCoachCreation();
+    if (!validation.allowed) {
+      setCreating(false);
+      if (validation.errorCode === "LIMIT_REACHED") {
+        setShowLimitAlert(true);
+      } else {
+        toast.error(validation.error || "Validation failed");
+      }
+      return;
+    }
+
     let pdfUrl = null;
 
     if (pdfFile) {
@@ -126,14 +139,14 @@ export default function DashboardClient({ initialCoaches, initialTier }: Dashboa
       pdfUrl = publicUrl;
     }
 
-    const { data: createdCoach, error: creationError } = await createCoach({
+    const { data: createdCoach, error: creationError, errorCode } = await createCoach({
       name,
       topic,
       language,
       class_name: className || null,
       exam_name: examName || null,
       pdf_url: pdfUrl
-    });
+    }) as any;
     
     // Refresh the page data via next/navigation
     router.refresh();
@@ -141,7 +154,7 @@ export default function DashboardClient({ initialCoaches, initialTier }: Dashboa
     setCreating(false);
     
     if (creationError) {
-      if (creationError.includes("Monthly limit reached")) {
+      if (errorCode === "LIMIT_REACHED") {
         setShowLimitAlert(true);
       } else {
         toast.error("Error creating coach");
@@ -395,7 +408,7 @@ export default function DashboardClient({ initialCoaches, initialTier }: Dashboa
             </AlertDialogTitle>
             <AlertDialogDescription className="text-zinc-400 font-medium text-lg leading-relaxed">
               You&apos;ve reached your free monthly limit of 2 coaches. <br />
-              Upgrade to the **Ultimate Prep Pass** to create up to **20 coaches**, 24/7 voice coaching, and more!
+              Upgrade to the <strong className="text-zinc-200">Ultimate Prep Pass</strong> to create up to <strong className="text-zinc-200">20 coaches</strong>, 24/7 voice coaching, and more!
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter className="flex-col sm:flex-row gap-4 mt-6">

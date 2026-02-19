@@ -2,8 +2,12 @@ import DodoPayments from "dodopayments";
 
 const apiKey = process.env.DODO_PAYMENTS_API_KEY;
 
+if (!apiKey) {
+  console.warn("DODO_PAYMENTS_API_KEY is not configured - payment features will not work");
+}
+
 export const dodo = new DodoPayments({
-  bearerToken: apiKey || "",
+  bearerToken: apiKey ?? "",
   environment: process.env.NODE_ENV === "production" ? "live_mode" : "test_mode",
 });
 

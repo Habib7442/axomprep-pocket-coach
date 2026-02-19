@@ -36,12 +36,18 @@ export default function PricingButton({ productId, email }: PricingButtonProps) 
     try {
       const response = await fetch("/api/checkout/dodo", {
         method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
         body: JSON.stringify({ productId, email }),
       });
 
-      const data = await response.json();
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.error || `Request failed with status ${response.status}`);
+      }
 
-      if (data.error) throw new Error(data.error);
+      const data = await response.json();
 
       // Open Overlay using the checkoutUrl (payment_link)
       DodoPayments.Checkout.open({

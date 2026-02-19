@@ -9,6 +9,7 @@ export async function POST(req: Request) {
 
     const body = await req.json();
     const productId = body.productId;
+    const email = user?.primaryEmailAddress?.emailAddress;
 
     if (!userId) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -18,6 +19,10 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Product ID is required" }, { status: 400 });
     }
 
+    if (!email) {
+      return NextResponse.json({ error: "User email is required" }, { status: 400 });
+    }
+
     // Create a checkout session with the correct structure
     const session = await dodo.checkoutSessions.create({
       product_cart: [{
@@ -25,7 +30,7 @@ export async function POST(req: Request) {
         quantity: 1,
       }],
       customer: {
-        email: user?.primaryEmailAddress?.emailAddress || "",
+        email,
       },
       metadata: {
         clerk_id: userId,
@@ -33,8 +38,8 @@ export async function POST(req: Request) {
     });
 
     return NextResponse.json({ checkoutUrl: session.checkout_url });
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error("Dodo Session Error:", error);
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return NextResponse.json({ error: "Failed to create checkout session" }, { status: 500 });
   }
 }

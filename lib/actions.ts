@@ -109,6 +109,36 @@ export const getMessages = async (coachId: string) => {
     }));
 };
 
+export const validateCoachCreation = async () => {
+    const user = await currentUser();
+    if (!user) return { allowed: false, error: "Unauthorized" };
+
+    const supabase = await createSupabaseServer();
+    const tier = await getUserTier();
+    
+    const now = new Date();
+    const startOfMonth = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1, 0, 0, 0, 0));
+    
+    const { count, error } = await supabase
+        .from('coaches')
+        .select('*', { count: 'exact', head: true })
+        .eq('user_id', user.id)
+        .gte('created_at', startOfMonth.toISOString());
+
+    if (error) return { allowed: false, error: error.message };
+
+    const limit = tier === 'pro' ? 20 : 2;
+    if ((count || 0) >= limit) {
+        return { 
+            allowed: false, 
+            error: `Monthly limit reached. ${tier === 'pro' ? 'Pro' : 'Free'} users can create up to ${limit} coaches per month.`,
+            errorCode: 'LIMIT_REACHED'
+        };
+    }
+
+    return { allowed: true };
+};
+
 export const createCoach = async (coachData: any) => {
     const user = await currentUser();
     
@@ -122,9 +152,8 @@ export const createCoach = async (coachData: any) => {
     const tier = await getUserTier();
     
     // 2. Count coaches for this month
-    const startOfMonth = new Date();
-    startOfMonth.setDate(1);
-    startOfMonth.setHours(0, 0, 0, 0);
+    const now = new Date();
+    const startOfMonth = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1, 0, 0, 0, 0));
     
     const { count, error: countError } = await supabase
         .from('coaches')
@@ -140,7 +169,8 @@ export const createCoach = async (coachData: any) => {
     if ((count || 0) >= limit) {
         return { 
             data: null, 
-            error: `Monthly limit reached. ${tier === 'pro' ? 'Paid' : 'Free'} users can create up to ${limit} coaches per month.` 
+            error: `Monthly limit reached. ${tier === 'pro' ? 'Pro' : 'Free'} users can create up to ${limit} coaches per month.`,
+            errorCode: 'LIMIT_REACHED'
         };
     }
 
