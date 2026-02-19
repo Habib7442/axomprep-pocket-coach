@@ -12,8 +12,14 @@ export const syncUser = async () => {
         return null;
     }
 
-    // Use Admin client for sync to bypass initial RLS/bootstrap issues in production
-    const supabase = createSupabaseAdmin();
+    let supabase;
+    try {
+        supabase = createSupabaseAdmin();
+    } catch (adminError) {
+        console.error('SYNC_USER: Admin client failed to initialize', adminError);
+        // Fallback or exit gracefully
+        return null;
+    }
 
     console.log('SYNC_USER: Attempting sync (Admin)', { 
         userId, 
