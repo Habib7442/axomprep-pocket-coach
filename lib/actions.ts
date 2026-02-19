@@ -31,7 +31,6 @@ export const syncUser = async () => {
         .upsert({
             clerk_id: userId,
             email: user.primaryEmailAddress?.emailAddress,
-            tier: 'free' // Default tier
         }, {
             onConflict: 'clerk_id'
         })
