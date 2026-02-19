@@ -13,7 +13,7 @@ const nextConfig: NextConfig = {
         headers: [
           {
             key: "Content-Security-Policy",
-            value: "script-src 'self' 'unsafe-eval' 'unsafe-inline' https://*.clerk.accounts.dev https://clerk.axomprep.in https://challenges.cloudflare.com; frame-src 'self' https://challenges.cloudflare.com https://*.clerk.accounts.dev;"
+            value: "default-src 'self'; script-src 'self' 'unsafe-eval' 'unsafe-inline' https://*.clerk.accounts.dev https://clerk.axomprep.in https://accounts.axomprep.in https://challenges.cloudflare.com https://sdk.hs.dodopayments.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' blob: data: https://img.clerk.com; frame-src 'self' https://challenges.cloudflare.com https://*.clerk.accounts.dev https://checkout.dodopayments.com; worker-src 'self' blob:; connect-src 'self' https://*.clerk.accounts.dev https://clerk.axomprep.in https://accounts.axomprep.in https://challenges.cloudflare.com https://api.dodopayments.com;"
           }
         ]
       }
