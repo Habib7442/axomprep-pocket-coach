@@ -28,7 +28,6 @@ import Link from "next/link";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { VoiceCoach } from "@/components/coach/VoiceCoach";
-import { useUser } from "@clerk/nextjs";
 
 interface Coach {
   id: string;
@@ -48,10 +47,11 @@ interface Message {
 interface CoachClientProps {
     coach: Coach;
     initialMessages: Message[];
+    userProfile: any;
 }
 
-export default function CoachClient({ coach, initialMessages }: CoachClientProps) {
-  const { user } = useUser();
+export default function CoachClient({ coach, initialMessages, userProfile }: CoachClientProps) {
+  const user = userProfile;
   const [messages, setMessages] = useState<Message[]>(initialMessages);
   const [input, setInput] = useState("");
   const [sending, setSending] = useState(false);
@@ -439,7 +439,7 @@ export default function CoachClient({ coach, initialMessages }: CoachClientProps
                       }`}
                     >
                       {m.role === "user"
-                        ? user?.firstName?.charAt(0) || "U"
+                        ? user?.full_name?.charAt(0) || "U"
                         : coach.name.charAt(0)}
                     </div>
                     <div

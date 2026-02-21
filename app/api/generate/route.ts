@@ -1,9 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
-import { auth } from "@clerk/nextjs/server";
+// Removed Clerk Import;
 import { generateGeminiText, generateGeminiImage } from "@/lib/gemini";
 
 export async function POST(req: NextRequest) {
-  const { userId } = await auth();
+  const userId = "temp-user";
 
   if (!userId) {
     return new Response("Unauthorized", { status: 401 });

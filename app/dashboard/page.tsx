@@ -1,18 +1,19 @@
 import { syncUser, getCoaches, getUserTier } from "@/lib/actions";
 import DashboardClient from "./DashboardClient";
 import { redirect } from "next/navigation";
-import { auth } from "@clerk/nextjs/server";
 
 export default async function DashboardPage() {
-    const { userId } = await auth();
+    const userProfile = await syncUser();
     
-    if (!userId) {
-        redirect("/");
+    if (!userProfile) {
+        redirect("/login");
     }
 
-    // Sync user and fetch initial data on the server
-    const [syncedUser, coaches, tier] = await Promise.all([
-        syncUser(),
+    if (!userProfile.onboarding_completed) {
+        redirect("/onboarding");
+    }
+
+    const [coaches, tier] = await Promise.all([
         getCoaches(),
         getUserTier()
     ]);
@@ -21,6 +22,7 @@ export default async function DashboardPage() {
         <DashboardClient 
             initialCoaches={coaches} 
             initialTier={tier} 
+            userProfile={userProfile}
         />
     );
 }

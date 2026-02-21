@@ -1,67 +1,40 @@
 'use server';
 
-import { auth, currentUser } from "@clerk/nextjs/server";
-import { createSupabaseServer, createSupabaseAdmin } from "@/lib/supabase-server";
+import { createClient } from "@/utils/supabase/server";
 import { revalidatePath } from "next/cache";
 
 export const syncUser = async () => {
-    const { userId } = await auth();
-    const user = await currentUser();
+    const supabase = await createClient();
+    const { data: { user } } = await supabase.auth.getUser();
     
-    if (!userId || !user) {
+    if (!user) {
         return null;
     }
 
-    let supabase;
-    try {
-        supabase = createSupabaseAdmin();
-    } catch (adminError) {
-        console.error('SYNC_USER: Admin client failed to initialize', adminError);
-        // Fallback or exit gracefully
-        return null;
-    }
-
-    console.log('SYNC_USER: Attempting sync (Admin)', { 
-        userId, 
-        email: user.primaryEmailAddress?.emailAddress 
-    });
-    
-    const { data, error } = await supabase
-        .from('users')
-        .upsert({
-            clerk_id: userId,
-            email: user.primaryEmailAddress?.emailAddress,
-        }, {
-            onConflict: 'clerk_id'
-        })
-        .select()
+    // Check if profile exists
+    const { data: profile, error } = await supabase
+        .from('profiles')
+        .select('*')
+        .eq('id', user.id)
         .single();
 
-    if (error) {
-        console.error('SYNC_USER: Failed', {
-            code: error.code,
-            message: error.message,
-            details: error.details,
-            hint: error.hint
-        });
+    if (error && error.code !== 'PGRST116') {
+        console.error('SYNC_USER: Profile fetch failed', error);
         return null;
     }
 
-    console.log('SYNC_USER: Success', { id: data.id });
-
-    return data;
+    return profile;
 };
 
 export const getCoaches = async () => {
-    const { userId } = await auth();
-    if (!userId) return [];
+    const supabase = await createClient();
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return [];
 
-    // Use Admin client for fetching to bypass RLS token issues in production
-    const supabase = createSupabaseAdmin();
     const { data, error } = await supabase
         .from('coaches')
         .select('*')
-        .eq('user_id', userId)
+        .eq('user_id', user.id)
         .order('created_at', { ascending: false });
 
     if (error) {
@@ -73,40 +46,34 @@ export const getCoaches = async () => {
 };
 
 export const getUserTier = async () => {
-    const { userId } = await auth();
-    if (!userId) return 'free';
+    const supabase = await createClient();
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return 'free';
 
-    const supabase = createSupabaseAdmin();
     const { data, error } = await supabase
-        .from('users')
-        .select('tier')
-        .eq('clerk_id', userId)
+        .from('profiles')
+        .select('credits, tier')
+        .eq('id', user.id)
         .single();
 
     if (error || !data) {
-        if (error && error.code !== 'PGRST116') { // PGRST116 is "no rows found"
-            console.error('GET_USER_TIER: Failed', {
-                userId,
-                code: error.code,
-                message: error.message
-            });
-        }
         return 'free';
     }
     
-    return data.tier;
+    // Prioritize the tier column, fallback to credits check
+    return data.tier || (data.credits > 0 ? 'pro' : 'free'); 
 };
 
 export const getCoach = async (id: string) => {
-    const { userId } = await auth();
-    if (!userId) return null;
+    const supabase = await createClient();
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return null;
 
-    const supabase = createSupabaseAdmin();
     const { data, error } = await supabase
         .from('coaches')
         .select('*')
         .eq('id', id)
-        .eq('user_id', userId)
+        .eq('user_id', user.id)
         .single();
 
     if (error) {
@@ -118,23 +85,22 @@ export const getCoach = async (id: string) => {
 };
 
 export const getMessages = async (coachId: string) => {
-    const { userId } = await auth();
-    if (!userId) return [];
-
-    const supabase = createSupabaseAdmin();
+    const supabase = await createClient();
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return [];
     
     // First verify coach ownership
     const { data: coach } = await supabase
         .from('coaches')
         .select('id')
         .eq('id', coachId)
-        .eq('user_id', userId)
+        .eq('user_id', user.id)
         .single();
         
     if (!coach) return [];
 
     const { data, error } = await supabase
-        .from('messages') 
+        .from('chat_messages') 
         .select('*')
         .eq('coach_id', coachId)
         .order('created_at', { ascending: true });
@@ -144,49 +110,36 @@ export const getMessages = async (coachId: string) => {
         return [];
     }
 
-    // Map to Message interface
-    return data.map(m => ({
+    return data.map((m: any) => ({
         role: m.role,
         content: m.content
     }));
 };
 
-export const validateCoachCreation = async () => {
-    const user = await currentUser();
+export const validateCoachCreation = async (): Promise<{ allowed: boolean; error?: string; errorCode?: string }> => {
+    const supabase = await createClient();
+    const { data: { user } } = await supabase.auth.getUser();
     if (!user) {
-        console.error('VALIDATE_COACH: No user found');
         return { allowed: false, error: "Unauthorized" };
     }
 
-    console.log('VALIDATE_COACH: Checking limits for', user.id);
-    const supabase = createSupabaseAdmin();
-    const tier = await getUserTier();
-    console.log('VALIDATE_COACH: User Tier is', tier);
-    
-    const now = new Date();
-    const startOfMonth = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1, 0, 0, 0, 0));
-    
+    // Since coach creation is now free, we still want a sensible limit to prevent spam.
+    // Let's allow up to 20 coaches per user for now.
     const { count, error } = await supabase
         .from('coaches')
         .select('*', { count: 'exact', head: true })
-        .eq('user_id', user.id)
-        .gte('created_at', startOfMonth.toISOString());
+        .eq('user_id', user.id);
 
     if (error) {
-        console.error('VALIDATE_COACH: Failed to fetch count', {
-            userId: user.id,
-            error: error.message,
-            code: error.code
-        });
-        return { allowed: false, error: error.message };
+        return { allowed: false, error: "Failed to validate coach limit" };
     }
 
-    const limit = tier === 'pro' ? 20 : 2;
-    if ((count || 0) >= limit) {
+    const MAX_COACHES = 20;
+    if (count !== null && count >= MAX_COACHES) {
         return { 
             allowed: false, 
-            error: `Monthly limit reached. ${tier === 'pro' ? 'Pro' : 'Free'} users can create up to ${limit} coaches per month.`,
-            errorCode: 'LIMIT_REACHED'
+            error: `You have reached the maximum limit of ${MAX_COACHES} coaches.`,
+            errorCode: "LIMIT_REACHED"
         };
     }
 
@@ -194,40 +147,16 @@ export const validateCoachCreation = async () => {
 };
 
 export const createCoach = async (coachData: any) => {
-    const user = await currentUser();
+    const supabase = await createClient();
+    const { data: { user } } = await supabase.auth.getUser();
     
     if (!user) {
       return { data: null, error: "Unauthorized" };
     }
 
-    console.log('CREATE_COACH: Inserting coach for', user.id);
-    const supabase = createSupabaseAdmin();
-    
-    // 1. Check user tier
-    const tier = await getUserTier();
-    
-    // 2. Count coaches for this month
-    const now = new Date();
-    const startOfMonth = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1, 0, 0, 0, 0));
-    
-    const { count, error: countError } = await supabase
-        .from('coaches')
-        .select('*', { count: 'exact', head: true })
-        .eq('user_id', user.id)
-        .gte('created_at', startOfMonth.toISOString());
-
-    if (countError) {
-        console.error('CREATE_COACH: Failed to fetch count', countError);
-        return { data: null, error: countError.message };
-    }
-
-    const limit = tier === 'pro' ? 20 : 2;
-    if ((count || 0) >= limit) {
-        return { 
-            data: null, 
-            error: `Monthly limit reached. ${tier === 'pro' ? 'Pro' : 'Free'} users can create up to ${limit} coaches per month.`,
-            errorCode: 'LIMIT_REACHED'
-        };
+    const validation = await validateCoachCreation();
+    if (!validation.allowed) {
+        return { data: null, error: validation.error };
     }
 
     const { data, error } = await supabase
@@ -240,16 +169,75 @@ export const createCoach = async (coachData: any) => {
         .single();
 
     if (error) {
-        console.error('CREATE_COACH: Failed to insert', {
-            userId: user.id,
-            error: error.message,
-            code: error.code,
-            details: error.details,
-            hint: error.hint
-        });
+        return { data: null, error: error.message };
+    }
+    revalidatePath('/dashboard');
+    return { data, error: null };
+};
+
+export const saveQuizResult = async (resultData: any) => {
+    const supabase = await createClient();
+    const { data: { user } } = await supabase.auth.getUser();
+    
+    if (!user) {
+      return { data: null, error: "Unauthorized" };
+    }
+
+    const { data, error } = await supabase
+        .from('quiz_results')
+        .insert([{
+            ...resultData,
+            user_id: user.id
+        }])
+        .select()
+        .single();
+
+    if (error) {
+        console.error('Error saving quiz result:', error.message);
         return { data: null, error: error.message };
     }
 
-    revalidatePath('/dashboard');
     return { data, error: null };
+};
+
+export const submitTestimonial = async (formData: { name: string; role?: string; content: string; rating: number }) => {
+    const supabase = await createClient();
+    
+    const { data, error } = await supabase
+        .from('testimonials')
+        .insert([
+            {
+                name: formData.name,
+                role: formData.role,
+                content: formData.content,
+                rating: formData.rating,
+                is_approved: false // Moderation by default
+            }
+        ])
+        .select()
+        .single();
+
+    if (error) {
+        console.error('Error submitting testimonial:', error.message);
+        return { success: false, error: error.message };
+    }
+
+    return { success: true, data };
+};
+
+export const getApprovedTestimonials = async () => {
+    const supabase = await createClient();
+    
+    const { data, error } = await supabase
+        .from('testimonials')
+        .select('*')
+        .eq('is_approved', true)
+        .order('created_at', { ascending: false });
+
+    if (error) {
+        console.error('Error fetching testimonials:', error.message);
+        return [];
+    }
+
+    return data;
 };

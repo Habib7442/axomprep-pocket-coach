@@ -1,19 +1,18 @@
 import { syncUser, getCoach, getMessages } from "@/lib/actions";
 import CoachClient from "./CoachClient";
 import { redirect } from "next/navigation";
-import { auth } from "@clerk/nextjs/server";
+;
 
 export default async function CoachPage({ params }: { params: Promise<{ id: string }> }) {
     const { id } = await params;
-    const { userId } = await auth();
+    // Fetch initial data on the server
+    const profile = await syncUser();
     
-    if (!userId) {
-        redirect("/");
+    if (!profile) {
+        redirect("/login");
     }
 
-    // Fetch initial data on the server
-    const [syncedUser, coach, messages] = await Promise.all([
-        syncUser(),
+    const [coach, messages] = await Promise.all([
         getCoach(id),
         getMessages(id)
     ]);
@@ -26,6 +25,7 @@ export default async function CoachPage({ params }: { params: Promise<{ id: stri
         <CoachClient 
             coach={coach} 
             initialMessages={messages} 
+            userProfile={profile}
         />
     );
 }

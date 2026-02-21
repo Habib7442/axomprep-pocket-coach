@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { createSupabaseAdmin } from '@/lib/supabase-server';
+import { createSupabaseServer } from '@/lib/supabase-server';
 import { generateTextResponse } from '@/lib/gemini';
 
 export async function POST(req: Request) {
@@ -22,7 +22,7 @@ export async function POST(req: Request) {
       throw new Error("Failed to parse quiz JSON");
     }
 
-    const supabase = createSupabaseAdmin();
+    const supabase = await createSupabaseServer();
     const { data, error } = await supabase
       .from('quizzes')
       .insert({

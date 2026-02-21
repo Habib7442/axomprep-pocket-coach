@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { createSupabaseAdmin } from '@/lib/supabase-server';
+import { createSupabaseServer } from '@/lib/supabase-server';
 import { generateAIImage, generateTextResponse } from '@/lib/gemini';
 
 export async function POST(req: Request) {
@@ -25,7 +25,7 @@ export async function POST(req: Request) {
     console.log('INFOGRAPHIC_GEN: Image generated');
 
     // 3. Save to Supabase using Admin client
-    const supabase = createSupabaseAdmin();
+    const supabase = await createSupabaseServer();
     const { data, error } = await supabase
       .from('infographics')
       .insert({

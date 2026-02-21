@@ -3,18 +3,30 @@
 const API_KEY = process.env.GEMINI_API_KEY || "";
 
 const ENDPOINTS = {
-  VISION: "https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent",
-  TEXT: "https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent",
-  IMAGE: "https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent"
+  VISION: "https://generativelanguage.googleapis.com/v1beta/models/gemini-3-flash-preview:generateContent",
+  TEXT: "https://generativelanguage.googleapis.com/v1beta/models/gemini-3-flash-preview:generateContent",
+  IMAGE: "https://generativelanguage.googleapis.com/v1beta/models/gemini-3-pro-image-preview:generateContent"
 };
 
 async function callGemini(endpoint: string, body: any) {
+  // Add thinkingConfig only for text/vision models
+  const isImageRequest = endpoint === ENDPOINTS.IMAGE;
+  const updatedBody = isImageRequest ? body : {
+    ...body,
+    generationConfig: {
+      ...body.generationConfig,
+      thinkingConfig: {
+        thinkingLevel: "HIGH",
+      },
+    },
+  };
+
   const response = await fetch(`${endpoint}?key=${API_KEY}`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
     },
-    body: JSON.stringify(body),
+    body: JSON.stringify(updatedBody),
   });
 
   if (!response.ok) {
@@ -49,7 +61,12 @@ export async function generateGeminiText(prompt: string, type?: string) {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
-      contents: [{ parts: [{ text: prompt }] }]
+      contents: [{ parts: [{ text: prompt }] }],
+      generationConfig: {
+        thinkingConfig: {
+          thinkingLevel: "HIGH",
+        },
+      },
     }),
   });
 }

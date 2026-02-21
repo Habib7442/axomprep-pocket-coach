@@ -65,7 +65,7 @@ export default function PricingButton({ productId, email }: PricingButtonProps) 
     <button 
       onClick={handleCheckout}
       disabled={loading}
-      className="w-full md:w-auto px-16 py-6 rounded-2xl bg-primary text-primary-foreground font-black uppercase tracking-widest text-xs transition-all hover:scale-105 active:scale-95 shadow-2xl shadow-primary/30 disabled:opacity-50"
+      className="w-full md:w-auto px-10 py-4 rounded-2xl bg-primary text-primary-foreground font-black uppercase tracking-widest text-xs transition-all hover:scale-105 active:scale-95 shadow-2xl shadow-primary/30 disabled:opacity-50"
     >
       {loading ? "Preparing..." : "Join Prep Pass"}
     </button>
