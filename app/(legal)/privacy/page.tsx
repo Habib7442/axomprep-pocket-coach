@@ -17,7 +17,7 @@ export default function PrivacyPage() {
         We collect information to provide a better learning experience for SEBA and AHSEC students. This includes:
       </p>
       <ul>
-        <li><strong>Account Information:</strong> Emails and names provided during Clerk authentication.</li>
+        <li><strong>Account Information:</strong> Emails and names provided during authentication.</li>
         <li><strong>Study Data:</strong> Questions you upload, chat history with your AI coaches, and PDF textbooks you provide for context.</li>
         <li><strong>Audio Data:</strong> Temporary audio streams used for our real-time voice coaching feature (not stored permanently unless specified).</li>
       </ul>

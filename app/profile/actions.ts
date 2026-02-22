@@ -8,11 +8,16 @@ export async function getProfile() {
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return null
 
-  const { data } = await supabase
+  const { data, error } = await supabase
     .from('profiles')
     .select('*')
     .eq('id', user.id)
     .single()
+
+  if (error) {
+    console.error('Failed to fetch profile:', error)
+    return null
+  }
 
   return { ...data, email: user.email, avatar_url: user.user_metadata?.avatar_url }
 }
@@ -30,7 +35,10 @@ export async function updateProfile(formData: {
   const { error } = await supabase
     .from('profiles')
     .update({
-      ...formData,
+      full_name: formData.full_name,
+      profession: formData.profession,
+      student_class: formData.student_class,
+      native_language: formData.native_language,
       updated_at: new Date().toISOString()
     })
     .eq('id', user.id)
@@ -43,6 +51,7 @@ export async function updateProfile(formData: {
 
 export async function signOut() {
   const supabase = await createClient()
-  await supabase.auth.signOut()
+  const { error } = await supabase.auth.signOut()
+  if (error) throw error
   revalidatePath('/', 'layout')
 }

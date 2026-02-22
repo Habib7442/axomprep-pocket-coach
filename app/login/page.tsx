@@ -34,10 +34,18 @@ function LoginForm() {
   const message = searchParams.get('message')
 
   const handleAction = async (formData: FormData) => {
-    if (isSignUp) {
-      await signup(formData);
-    } else {
-      await login(formData);
+    try {
+      if (isSignUp) {
+        await signup(formData);
+      } else {
+        await login(formData);
+      }
+    } catch (error: any) {
+      // Re-throw redirect errors so Next.js can handle them
+      if (error?.message === 'NEXT_REDIRECT' || error?.digest?.includes('NEXT_REDIRECT')) {
+        throw error;
+      }
+      console.error('Authentication error:', error);
     }
   };
 
@@ -77,8 +85,15 @@ function LoginForm() {
 
             <div className="space-y-4">
               <button
-                onClick={() => {
-                  signInWithGoogle()
+                onClick={async () => {
+                  try {
+                    await signInWithGoogle()
+                  } catch (error: any) {
+                    if (error?.message === 'NEXT_REDIRECT' || error?.digest?.includes('NEXT_REDIRECT')) {
+                      throw error;
+                    }
+                    console.error('Google sign-in error:', error);
+                  }
                 }}
                 className="w-full flex items-center justify-center gap-3 px-6 py-4 rounded-2xl border-2 border-zinc-100 bg-white hover:bg-zinc-50 transition-all font-bold group"
               >
@@ -97,8 +112,9 @@ function LoginForm() {
 
               <form action={handleAction} className="space-y-4">
                 <div className="space-y-2">
-                  <label className="text-[10px] font-black uppercase tracking-widest text-zinc-400 pl-2">Email Address</label>
+                  <label htmlFor="email" className="text-[10px] font-black uppercase tracking-widest text-zinc-400 pl-2">Email Address</label>
                   <input
+                    id="email"
                     name="email"
                     type="email"
                     required
@@ -108,9 +124,10 @@ function LoginForm() {
                 </div>
 
                 <div className="space-y-2">
-                  <label className="text-[10px] font-black uppercase tracking-widest text-zinc-400 pl-2">Password</label>
+                  <label htmlFor="password" className="text-[10px] font-black uppercase tracking-widest text-zinc-400 pl-2">Password</label>
                   <div className="relative group/pass">
                     <input
+                      id="password"
                       name="password"
                       type={showPassword ? "text" : "password"}
                       required

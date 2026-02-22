@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { updateProfile, signOut } from './actions'
@@ -20,8 +20,13 @@ const LANGUAGES = [
 
 export default function ProfileClient({ profile }: { profile: any }) {
   const router = useRouter()
+  const isMounted = useRef(true)
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(false)
+
+  useEffect(() => {
+    return () => { isMounted.current = false }
+  }, [])
 
   const [fullName, setFullName] = useState(profile.full_name || '')
   const [profession, setProfession] = useState(profile.profession || '')
@@ -40,18 +45,26 @@ export default function ProfileClient({ profile }: { profile: any }) {
         native_language: nativeLanguage,
       })
       setSaved(true)
-      setTimeout(() => setSaved(false), 2000)
+      setTimeout(() => {
+        if (isMounted.current) setSaved(false)
+      }, 2000)
       toast.success('Profile updated!')
       router.refresh()
     } catch (err) {
+      console.error('Profile update failed:', err)
       toast.error('Failed to update profile')
     }
-    setSaving(false)
+    if (isMounted.current) setSaving(false)
   }
 
   const handleSignOut = async () => {
-    await signOut()
-    router.push('/login')
+    try {
+      await signOut()
+      router.push('/login')
+    } catch (err) {
+      console.error('Sign out failed:', err)
+      toast.error('Failed to sign out')
+    }
   }
 
   return (
@@ -109,7 +122,8 @@ export default function ProfileClient({ profile }: { profile: any }) {
             <button
               onClick={() => {
                 navigator.clipboard.writeText(profile.referral_code || '')
-                toast.success('Referral code copied!')
+                  .then(() => toast.success('Referral code copied!'))
+                  .catch(() => toast.error('Failed to copy'))
               }}
               className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-black text-white text-xs font-bold hover:scale-105 active:scale-95 transition-all"
             >
@@ -153,13 +167,11 @@ export default function ProfileClient({ profile }: { profile: any }) {
                 <GraduationCap className="w-4 h-4" /> Student
               </button>
               <button
-                onClick={() => setProfession('')}
+                onClick={() => setProfession('Working')}
                 className={`flex items-center justify-center gap-2 py-3.5 rounded-xl font-bold text-sm transition-all ${
-                  !isStudent && profession !== ''
+                  profession === 'Working'
                     ? 'bg-black text-white shadow-lg shadow-black/10'
-                    : profession === '' 
-                      ? 'bg-zinc-50 text-zinc-500 border border-zinc-100 hover:bg-zinc-100'
-                      : 'bg-zinc-50 text-zinc-500 border border-zinc-100 hover:bg-zinc-100'
+                    : 'bg-zinc-50 text-zinc-500 border border-zinc-100 hover:bg-zinc-100'
                 }`}
               >
                 <Briefcase className="w-4 h-4" /> Working
@@ -201,10 +213,10 @@ export default function ProfileClient({ profile }: { profile: any }) {
                 </div>
               </div>
             ) : (
-              !isStudent && (
+              !isStudent && profession !== 'Working' && (
                 <input
                   type="text"
-                  value={profession === 'Student' ? '' : profession}
+                  value={profession}
                   onChange={(e) => setProfession(e.target.value)}
                   placeholder="e.g. Software Engineer, Teacher..."
                   className="w-full px-5 py-4 rounded-2xl bg-zinc-50 border-2 border-transparent focus:border-black outline-none transition-all font-medium placeholder:text-zinc-300 focus:ring-4 focus:ring-black/5 mt-2"

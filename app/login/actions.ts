@@ -4,12 +4,29 @@ import { revalidatePath } from 'next/cache'
 import { redirect } from 'next/navigation'
 import { createClient } from '@/utils/supabase/server'
 
+const getURL = () => {
+  let url =
+    process?.env?.NEXT_PUBLIC_SITE_URL ?? // Set this to your site URL in production
+    process?.env?.NEXT_PUBLIC_VERCEL_URL ?? // Automatically set on Vercel
+    'http://localhost:3000'
+  
+  // Make sure to include `https://` when not localhost.
+  url = url.includes('http') ? url : `https://${url}`
+  // Make sure to include a trailing `/`.
+  url = url.charAt(url.length - 1) === '/' ? url : `${url}/`
+  return url
+}
+
+
 export async function login(formData: FormData) {
   const supabase = await createClient()
 
-  // typecasting; then, validate with a library like Zod
-  const email = formData.get('email') as string;
-  const password = formData.get('password') as string;
+  const email = formData.get('email');
+  const password = formData.get('password');
+
+  if (typeof email !== 'string' || typeof password !== 'string') {
+    redirect('/login?error=' + encodeURIComponent('Email and password are required'));
+  }
   
   const { error } = await supabase.auth.signInWithPassword({ email, password })
 
@@ -20,11 +37,15 @@ export async function login(formData: FormData) {
   const { data: { user } } = await supabase.auth.getUser()
   
   if (user) {
-    const { data: profile } = await supabase
+    const { data: profile, error: profileError } = await supabase
       .from('profiles')
       .select('onboarding_completed')
       .eq('id', user.id)
       .single()
+    
+    if (profileError) {
+      console.error('Failed to fetch profile:', profileError)
+    }
     
     if (profile && !profile.onboarding_completed) {
       revalidatePath('/', 'layout')
@@ -64,14 +85,18 @@ export async function completeOnboarding(onboardingData: {
 export async function signup(formData: FormData) {
   const supabase = await createClient()
 
-  const email = formData.get('email') as string;
-  const password = formData.get('password') as string;
+  const email = formData.get('email');
+  const password = formData.get('password');
+
+  if (typeof email !== 'string' || typeof password !== 'string') {
+    redirect('/login?error=' + encodeURIComponent('Email and password are required'));
+  }
 
   const { error } = await supabase.auth.signUp({ 
     email, 
     password,
     options: {
-      emailRedirectTo: `${process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000'}/auth/callback`,
+      emailRedirectTo: `${getURL()}auth/callback`,
     }
   })
 
@@ -88,7 +113,7 @@ export async function signInWithGoogle() {
   const { data, error } = await supabase.auth.signInWithOAuth({
     provider: 'google',
     options: {
-      redirectTo: `${process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000'}/auth/callback`,
+      redirectTo: `${getURL()}auth/callback`,
     },
   })
 
@@ -99,4 +124,6 @@ export async function signInWithGoogle() {
   if (data.url) {
     redirect(data.url)
   }
+
+  redirect('/login?error=' + encodeURIComponent('Failed to initialize Google sign-in'))
 }

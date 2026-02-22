@@ -5,22 +5,22 @@ import { Mic, Volume2, BrainCircuit, ArrowUpRight } from "lucide-react";
 const features = [
   {
     icon: <Mic className="w-8 h-8 text-orange-600" />,
-    title: "Live Voice Coach",
-    description: "Hands-free, real-time voice conversations that feel like learning from a real-life private tutor.",
+    title: "Native Voice Coach",
+    description: "Hands-free, real-time voice conversations natively in Assamese and English. Feels like a real private tutor from Assam.",
     bg: "bg-orange-50/50",
     border: "border-orange-100"
   },
   {
     icon: <Volume2 className="w-8 h-8 text-indigo-600" />,
-    title: "Audio Deep-Dives",
-    description: "Convert any topic into immersive storytelling or podcast episodes to learn while you're on the move.",
+    title: "Universal Learning",
+    description: "Create an AI coach for any niche — from school exams to coding or music. Learn anything you want, effortlessly.",
     bg: "bg-indigo-50/50",
     border: "border-indigo-100"
   },
   {
     icon: <BrainCircuit className="w-8 h-8 text-amber-600" />,
-    title: "Smart Knowledge Quizzes",
-    description: "Personalized 20-question MCQ sets generated from your textbooks to verify your understanding.",
+    title: "Smart Local Context",
+    description: "AI that understands the context of Assam's education system while providing global-standard knowledge tools.",
     bg: "bg-amber-50/50",
     border: "border-amber-100"
   }
@@ -44,9 +44,10 @@ export default function Features() {
         {features.map((feature, idx) => (
           <div 
             key={idx} 
-            className={`group p-8 rounded-[2rem] border ${feature.border} ${feature.bg} flex flex-col items-start gap-6 transition-all hover:-translate-y-2 hover:shadow-2xl hover:shadow-black/5`}
+            tabIndex={0}
+            className={`group p-8 rounded-[2rem] border ${feature.border} ${feature.bg} flex flex-col items-start gap-6 transition-all hover:-translate-y-2 hover:shadow-2xl hover:shadow-black/5 focus:outline-none focus:ring-4 focus:ring-black/5 focus:-translate-y-2 focus:shadow-2xl focus:shadow-black/5`}
           >
-            <div className="w-14 h-14 rounded-2xl bg-white shadow-xl shadow-black/5 flex items-center justify-center group-hover:scale-110 transition-transform duration-500">
+            <div className="w-14 h-14 rounded-2xl bg-white shadow-xl shadow-black/5 flex items-center justify-center group-hover:scale-110 group-focus:scale-110 transition-transform duration-500">
               {/* Scale down the icons slightly */}
               <div className="scale-75">
                 {feature.icon}
@@ -60,7 +61,7 @@ export default function Features() {
               </p>
             </div>
 
-            <div className="mt-auto pt-2 flex items-center gap-2 text-black font-bold text-[10px] uppercase tracking-widest opacity-0 group-hover:opacity-100 transition-opacity">
+            <div className="mt-auto pt-2 flex items-center gap-2 text-black font-bold text-[10px] uppercase tracking-widest opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 transition-opacity" aria-hidden="true">
               Explore
               <ArrowUpRight className="w-3 h-3" />
             </div>

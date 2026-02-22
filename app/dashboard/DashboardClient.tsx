@@ -122,7 +122,7 @@ export default function DashboardClient({ initialCoaches, initialTier, userProfi
     if (pdfFile) {
       const fileExt = pdfFile.name.split('.').pop();
       const fileName = `${Math.random()}.${fileExt}`;
-      const filePath = `${userProfile.id}/${fileName}`;
+      const filePath = `${userProfile?.id}/${fileName}`;
 
       const { error: uploadError } = await supabaseBrowser.storage
         .from('coaches_pdfs')
@@ -241,7 +241,7 @@ export default function DashboardClient({ initialCoaches, initialTier, userProfi
             <p className="text-sm font-bold truncate text-zinc-800">{userProfile?.full_name || 'Learner'}</p>
             <div className="flex items-center gap-1.5">
               <span className="inline-flex items-center gap-1 text-[9px] font-black uppercase tracking-wider px-1.5 py-0.5 rounded-md bg-orange-100 text-orange-600">
-                <Zap className="w-2.5 h-2.5" /> {userProfile.credits} credits
+                <Zap className="w-2.5 h-2.5" /> {userProfile?.credits ?? 0} credits
               </span>
             </div>
           </div>
@@ -463,12 +463,20 @@ export default function DashboardClient({ initialCoaches, initialTier, userProfi
                 <p className="text-zinc-500 text-sm">Share your code to earn extra credits!</p>
               </div>
               <div className="flex items-center gap-3 bg-white px-5 py-3 rounded-2xl border border-orange-200 shadow-sm">
-                <span className="text-lg font-black tracking-widest italic text-zinc-900 font-mono">{userProfile.referral_code}</span>
+                <span className="text-lg font-black tracking-widest italic text-zinc-900 font-mono">{userProfile?.referral_code ?? '—'}</span>
                 <button 
                   className="p-2 hover:bg-orange-50 rounded-lg transition-colors"
                   onClick={() => {
-                    navigator.clipboard.writeText(userProfile.referral_code);
-                    toast.success("Copied!");
+                    const code = userProfile?.referral_code;
+                    if (!code) return;
+                    if (navigator.clipboard) {
+                      navigator.clipboard.writeText(code).then(
+                        () => toast.success("Copied!"),
+                        () => toast.error("Failed to copy")
+                      );
+                    } else {
+                      toast.error("Clipboard not available");
+                    }
                   }}
                 >
                   <Copy className="w-4 h-4 text-orange-500" />

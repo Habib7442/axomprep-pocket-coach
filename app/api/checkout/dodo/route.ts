@@ -41,6 +41,6 @@ export async function POST(req: Request) {
     return NextResponse.json({ checkoutUrl: session.checkout_url });
   } catch (error: any) {
     console.error("Dodo Session Error:", error);
-    return NextResponse.json({ error: error.message || "Failed to create checkout session" }, { status: 500 });
+    return NextResponse.json({ error: "An internal error occurred" }, { status: 500 });
   }
 }

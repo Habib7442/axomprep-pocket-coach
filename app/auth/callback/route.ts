@@ -12,7 +12,18 @@ export async function GET(request: Request) {
     const supabase = await createClient()
     const { error } = await supabase.auth.exchangeCodeForSession(code)
     if (!error) {
-      const { data: profile } = await supabase.from('profiles').select('onboarding_completed').eq('id', (await supabase.auth.getUser()).data.user?.id).single()
+      const userResponse = await supabase.auth.getUser()
+      const userId = userResponse.data.user?.id
+      const { data: profile, error: profileError } = await supabase
+        .from('profiles')
+        .select('onboarding_completed')
+        .eq('id', userId)
+        .single()
+      
+      if (profileError) {
+        console.error('Auth callback: Failed to fetch profile:', profileError)
+      }
+
       const finalNext = (profile && !profile.onboarding_completed) ? '/onboarding' : next
 
       const forwardedHost = request.headers.get('x-forwarded-host') 

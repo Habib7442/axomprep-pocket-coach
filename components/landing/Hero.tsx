@@ -19,13 +19,14 @@ export default function Hero({ user }: HeroProps) {
         </div>
 
         <h1 className="text-5xl md:text-7xl font-bold tracking-tighter leading-[0.9] text-black animate-in fade-in slide-in-from-bottom-8 duration-700">
-          Design Your <span className="font-serif italic text-orange-500 font-normal">Perfect</span> <br />
+          Assam's Own <span className="font-serif italic text-orange-500 font-normal">Expert</span> <br />
           AI Pocket Coach
         </h1>
 
         <p className="max-w-xl mx-auto text-lg md:text-xl text-zinc-500 leading-relaxed font-medium animate-in fade-in slide-in-from-bottom-12 duration-1000">
-          Learn anything with personalized AI support. 
-          Snap a photo of any question or note and get instant explanations in <span className="text-black font-bold underline decoration-orange-500/30">your native language</span>.
+          Learn anything with universal AI support. 
+          Get instant explanations in <span className="text-black font-bold underline decoration-orange-500/30">Native Assamese & English</span>. 
+          Built specifically for every student and learner in Assam.
         </p>
 
         <div className="flex flex-col sm:flex-row items-center justify-center gap-6 pt-8 animate-in fade-in slide-in-from-bottom-16 duration-1000">

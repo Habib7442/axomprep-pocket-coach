@@ -2,6 +2,7 @@
 
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
+import { toast } from 'sonner'
 import { completeOnboarding } from '@/app/login/actions'
 import { ArrowRight, ArrowLeft, GraduationCap, Briefcase, Sparkles } from 'lucide-react'
 
@@ -54,8 +55,15 @@ export default function OnboardingPage() {
         student_class: profession === 'student' ? studentClass : undefined,
         native_language: nativeLanguage,
       })
-    } catch (err) {
+      // Success fallback if server redirect doesn't trigger
+      router.push('/dashboard')
+    } catch (err: any) {
+      if (err?.message === 'NEXT_REDIRECT' || err?.digest?.includes('NEXT_REDIRECT')) {
+        throw err;
+      }
       console.error('Onboarding error:', err)
+      toast.error('Failed to complete onboarding. Please try again.')
+    } finally {
       setLoading(false)
     }
   }

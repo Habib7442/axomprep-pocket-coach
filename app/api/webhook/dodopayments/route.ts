@@ -1,5 +1,5 @@
 import { Webhooks } from "@dodopayments/nextjs";
-import { createSupabaseServer } from "@/lib/supabase-server";
+import { createSupabaseAdmin } from "@/lib/supabase-server";
 
 const webhookKey = process.env.DODO_WEBHOOK_SECRET;
 
@@ -22,7 +22,7 @@ export const POST = Webhooks({
       return;
     }
 
-    const supabase = await createSupabaseServer();
+    const supabase = createSupabaseAdmin();
     
     // 1. Record transaction
     const { error: insertError } = await supabase.from("transactions").upsert({
@@ -63,7 +63,7 @@ export const POST = Webhooks({
       return;
     }
 
-    const supabase = await createSupabaseServer();
+    const supabase = createSupabaseAdmin();
 
     // 1. Record/Update transaction status
     const { error: insertError } = await supabase.from("transactions").upsert({

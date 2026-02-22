@@ -13,6 +13,8 @@ const features = [
 ];
 
 export default function Pricing() {
+  const currentYear = new Date().getFullYear();
+
   return (
     <section id="pricing" className="py-20 md:py-32 px-4 md:px-6">
       <div className="max-w-5xl mx-auto rounded-[2.5rem] md:rounded-[4rem] bg-black text-white p-8 md:p-24 relative overflow-hidden">
@@ -25,7 +27,7 @@ export default function Pricing() {
             <div className="space-y-4">
               <span className="text-[10px] font-black uppercase tracking-[0.5em] text-orange-500 italic">The Ultimate Prep Pass</span>
               <h2 className="text-3xl md:text-5xl font-bold tracking-tighter leading-tight">
-                Everything you need to <span className="font-serif italic text-zinc-400 font-normal">Ace</span> 2026.
+                Everything you need to <span className="font-serif italic text-zinc-400 font-normal">Ace</span> {currentYear}.
               </h2>
             </div>
             

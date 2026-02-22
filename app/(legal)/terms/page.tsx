@@ -21,7 +21,7 @@ export default function TermsPage() {
       <h2>3. User Account</h2>
       <p>
         Users must be students or parents of students. You are responsible for maintaining the 
-        confidentiality of your Clerk account. Axomprep reserves the right to suspend accounts 
+        confidentiality of your account. Axomprep reserves the right to suspend accounts 
         found to be abusing the system or scraping proprietary AI responses.
       </p>
 

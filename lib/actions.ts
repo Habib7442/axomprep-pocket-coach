@@ -169,7 +169,7 @@ export const createCoach = async (coachData: any) => {
         .single();
 
     if (error) {
-        return { data: null, error: error.message };
+        return { data: null, error: "Failed to create coach" };
     }
     revalidatePath('/dashboard');
     return { data, error: null };
@@ -194,7 +194,7 @@ export const saveQuizResult = async (resultData: any) => {
 
     if (error) {
         console.error('Error saving quiz result:', error.message);
-        return { data: null, error: error.message };
+        return { data: null, error: "Failed to save quiz result" };
     }
 
     return { data, error: null };
@@ -202,6 +202,16 @@ export const saveQuizResult = async (resultData: any) => {
 
 export const submitTestimonial = async (formData: { name: string; role?: string; content: string; rating: number }) => {
     const supabase = await createClient();
+
+    // Validate rating is within expected range
+    if (formData.rating < 1 || formData.rating > 5 || !Number.isInteger(formData.rating)) {
+        return { success: false, error: "Rating must be an integer between 1 and 5" };
+    }
+    
+    // Validate content length
+    if (formData.content.length > 1000) {
+        return { success: false, error: "Content exceeds maximum length" };
+    }
     
     const { data, error } = await supabase
         .from('testimonials')
@@ -219,7 +229,7 @@ export const submitTestimonial = async (formData: { name: string; role?: string;
 
     if (error) {
         console.error('Error submitting testimonial:', error.message);
-        return { success: false, error: error.message };
+        return { success: false, error: "Failed to submit testimonial" };
     }
 
     return { success: true, data };

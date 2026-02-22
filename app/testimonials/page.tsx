@@ -31,8 +31,8 @@ export default function TestimonialsPage() {
         toast.success("Thank you! Your testimonial has been submitted for review.");
         setFormData({ name: "", role: "", content: "", rating: 5 });
       } else {
-        console.error("FULL TESTIMONIAL ERROR:", result.error);
-        toast.error(`Submission failed: ${result.error || "Unknown error"}. Please check console for details.`);
+        console.error("Testimonial submission failed:", result.error);
+        toast.error("Submission failed. Please try again later.");
       }
     } catch (error) {
       toast.error("An unexpected error occurred.");
@@ -95,19 +95,21 @@ export default function TestimonialsPage() {
               <form onSubmit={handleSubmit} className="space-y-6">
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                   <div className="space-y-2">
-                    <label className="text-xs font-black uppercase tracking-widest text-zinc-400 ml-1">Full Name *</label>
+                    <label htmlFor="name" className="text-xs font-black uppercase tracking-widest text-zinc-400 ml-1">Full Name *</label>
                     <input 
-                      required
-                      type="text" 
-                      placeholder="e.g. Rahul Das"
+                       required
+                       id="name"
+                       type="text" 
+                       placeholder="e.g. Rahul Das"
                       className="w-full px-5 py-4 rounded-2xl bg-white border border-zinc-200 outline-none focus:border-orange-500/50 focus:ring-4 focus:ring-orange-500/5 transition-all text-sm font-medium"
                       value={formData.name}
                       onChange={(e) => setFormData({...formData, name: e.target.value})}
                     />
                   </div>
                   <div className="space-y-2">
-                    <label className="text-xs font-black uppercase tracking-widest text-zinc-400 ml-1">Role (Optional)</label>
+                    <label htmlFor="role" className="text-xs font-black uppercase tracking-widest text-zinc-400 ml-1">Role (Optional)</label>
                     <input 
+                      id="role"
                       type="text" 
                       placeholder="e.g. Student, SEBA 2026"
                       className="w-full px-5 py-4 rounded-2xl bg-white border border-zinc-200 outline-none focus:border-orange-500/50 focus:ring-4 focus:ring-orange-500/5 transition-all text-sm font-medium"
@@ -138,9 +140,10 @@ export default function TestimonialsPage() {
                 </div>
 
                 <div className="space-y-2">
-                  <label className="text-xs font-black uppercase tracking-widest text-zinc-400 ml-1">Your Story *</label>
+                  <label htmlFor="content" className="text-xs font-black uppercase tracking-widest text-zinc-400 ml-1">Your Story *</label>
                   <textarea 
                     required
+                    id="content"
                     placeholder="Tell us how Axomprep helps you learn..."
                     rows={5}
                     className="w-full px-5 py-4 rounded-3xl bg-white border border-zinc-200 outline-none focus:border-orange-500/50 focus:ring-4 focus:ring-orange-500/5 transition-all text-sm font-medium resize-none"
