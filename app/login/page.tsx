@@ -30,12 +30,16 @@ function LoginForm() {
   const [isSignUp, setIsSignUp] = useState(false)
   const [showPassword, setShowPassword] = useState(false)
   const [formError, setFormError] = useState<string | null>(null)
+  const router = useRouter()
   const searchParams = useSearchParams()
   const error = searchParams.get('error')
   const message = searchParams.get('message')
 
   const handleAction = async (formData: FormData) => {
     setFormError(null);
+    if (error || message) {
+      router.replace('/login', { scroll: false });
+    }
     try {
       if (isSignUp) {
         await signup(formData);
@@ -90,6 +94,9 @@ function LoginForm() {
               <button
                 onClick={async () => {
                   setFormError(null);
+                  if (error || message) {
+                    router.replace('/login', { scroll: false });
+                  }
                   try {
                     await signInWithGoogle()
                   } catch (error: unknown) {

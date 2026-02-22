@@ -208,7 +208,7 @@ export const submitTestimonial = async (formData: { name: string; role?: string;
         return { success: false, error: "Name is required" };
     }
 
-    if (!formData.content || typeof formData.content !== 'string') {
+    if (!formData.content || typeof formData.content !== 'string' || formData.content.trim().length === 0) {
         return { success: false, error: "Content is required" };
     }
 

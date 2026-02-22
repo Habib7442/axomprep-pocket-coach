@@ -26,11 +26,15 @@ export async function POST(req: NextRequest) {
     }
 
     // Fetch profile for context
-    const { data: profile } = await supabase
+    const { data: profile, error: profileError } = await supabase
       .from('profiles')
       .select('credits, native_language, profession, student_class')
       .eq('id', user.id)
       .single()
+
+    if (profileError && profileError.code !== 'PGRST116') {
+      console.error('Profile fetch error:', profileError)
+    }
 
     // Atomic credit check and deduction BEFORE AI call
     const { data: success, error: rpcError } = await supabase.rpc('deduct_credit', { user_id: user.id })
@@ -169,11 +173,15 @@ export async function POST(req: NextRequest) {
     }
 
     // Fetch updated credits for accurate UI feedback
-    const { data: updatedProfile } = await supabase
+    const { data: updatedProfile, error: updatedProfileError } = await supabase
       .from('profiles')
       .select('credits')
       .eq('id', user.id)
       .single()
+
+    if (updatedProfileError && updatedProfileError.code !== 'PGRST116') {
+      console.error('Updated profile fetch error:', updatedProfileError)
+    }
 
     return NextResponse.json({ 
       reply: aiReply, 

@@ -30,8 +30,9 @@ export const VoiceCoach: React.FC<VoiceCoachProps> = ({
   const currentAudioRef = useRef<HTMLAudioElement | null>(null);
 
   const startRecording = async () => {
+    let stream: MediaStream | null = null;
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       const recorder = new MediaRecorder(stream);
       mediaRecorderRef.current = recorder;
       audioChunksRef.current = [];
@@ -41,7 +42,8 @@ export const VoiceCoach: React.FC<VoiceCoachProps> = ({
       };
 
       recorder.onstop = async () => {
-        const audioBlob = new Blob(audioChunksRef.current, { type: 'audio/wav' });
+        const actualMimeType = recorder.mimeType || 'audio/webm';
+        const audioBlob = new Blob(audioChunksRef.current, { type: actualMimeType });
         await processAudio(audioBlob);
       };
 
@@ -51,6 +53,9 @@ export const VoiceCoach: React.FC<VoiceCoachProps> = ({
     } catch (err) {
       console.error("Mic access error:", err);
       toast.error("Could not access microphone");
+      if (stream) {
+        stream.getTracks().forEach(t => t.stop());
+      }
     }
   };
 
@@ -66,36 +71,39 @@ export const VoiceCoach: React.FC<VoiceCoachProps> = ({
   const processAudio = async (blob: Blob) => {
     setLoading(true);
     try {
+    const base64Audio = await new Promise<string>((resolve, reject) => {
       const reader = new FileReader();
+      reader.onloadend = () => resolve((reader.result as string).split(',')[1]);
+      reader.onerror = () => reject(new Error('Failed to read audio'));
       reader.readAsDataURL(blob);
-      reader.onloadend = async () => {
-        const base64Audio = (reader.result as string).split(',')[1];
-        
-        const response = await fetch('/api/coach-voice', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            coachId,
-            audioBase64: base64Audio
-          })
-        });
+    });
+    
+    const response = await fetch('/api/coach-voice', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        coachId,
+        audioBase64: base64Audio,
+        mimeType: blob.type
+      })
+    });
 
-        if (!response.ok) {
-          const errData = await response.json();
-          throw new Error(errData.error || "Failed to get response from coach");
-        }
-        
-        const data = await response.json();
-        if (data.text) {
-          onTranscription?.(data.text, 'assistant');
-        }
-        
-        if (data.audio) {
-          await playResponse(data.audio);
-        }
-      };
-    } catch (err: any) {
-      toast.error(err.message || "Voice processing failed");
+    if (!response.ok) {
+      const errData = await response.json().catch(() => ({}));
+      throw new Error(errData.error || "Failed to get response from coach");
+    }
+    
+    const data = await response.json();
+    if (data.text) {
+      onTranscription?.(data.text, 'assistant');
+    }
+    
+    if (data.audio) {
+      await playResponse(data.audio);
+    }
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : "Voice processing failed";
+      toast.error(message);
       setStatus("Voice Ready");
     } finally {
       setLoading(false);

@@ -23,10 +23,14 @@ export async function POST(req: NextRequest) {
     }
 
     // Fetch coach and profile info
-    const [{ data: coach, error: coachError }, { data: profile }] = await Promise.all([
+    const [{ data: coach, error: coachError }, { data: profile, error: profileError }] = await Promise.all([
       supabase.from('coaches').select('*').eq('id', coachId).eq('user_id', user.id).single(),
       supabase.from('profiles').select('native_language, student_class').eq('id', user.id).single()
     ])
+
+    if (profileError && profileError.code !== 'PGRST116') {
+      console.error('Profile fetch error:', profileError);
+    }
 
     if (coachError && coachError.code !== 'PGRST116') {
       console.error('Coach ownership check error:', coachError);

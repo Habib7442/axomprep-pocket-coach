@@ -14,7 +14,7 @@ export async function POST(req: NextRequest) {
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) return Response.json({ error: 'Unauthorized' }, { status: 401 })
 
-    const { coachId, audioBase64 } = await req.json()
+    const { coachId, audioBase64, mimeType } = await req.json()
 
     if (!coachId || typeof coachId !== 'string') {
       return Response.json({ error: 'coachId is required' }, { status: 400 })
@@ -39,11 +39,15 @@ export async function POST(req: NextRequest) {
     if (!coach) return Response.json({ error: 'Forbidden' }, { status: 403 })
 
     // Fetch user profile for language
-    const { data: profile } = await supabase
+    const { data: profile, error: profileError } = await supabase
       .from('profiles')
       .select('native_language')
       .eq('id', user.id)
       .single()
+
+    if (profileError && profileError.code !== 'PGRST116') {
+      console.error('Profile fetch error:', profileError)
+    }
 
     const lang = profile?.native_language || coach.language || 'english'
 
@@ -77,7 +81,7 @@ export async function POST(req: NextRequest) {
             },
             {
               inlineData: {
-                mimeType: 'audio/wav',
+                mimeType: mimeType || 'audio/wav',
                 data: audioBase64
               }
             }

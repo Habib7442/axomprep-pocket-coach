@@ -33,26 +33,22 @@ export function isValidExternalUrl(urlString: string): boolean {
     // Block localhost and private IP ranges to prevent SSRF
     if (
       hostname === 'localhost' || 
+      hostname.endsWith('.localhost') ||
+      hostname === '0.0.0.0' ||
       hostname.startsWith('127.') || 
       hostname.startsWith('10.') || 
-      hostname.startsWith('172.16.') || // Standard private range
-      hostname.startsWith('172.17.') ||
-      hostname.startsWith('172.18.') ||
-      hostname.startsWith('172.19.') ||
-      hostname.startsWith('172.20.') ||
-      hostname.startsWith('172.21.') ||
-      hostname.startsWith('172.22.') ||
-      hostname.startsWith('172.23.') ||
-      hostname.startsWith('172.24.') ||
-      hostname.startsWith('172.25.') ||
-      hostname.startsWith('172.26.') ||
-      hostname.startsWith('172.27.') ||
-      hostname.startsWith('172.28.') ||
-      hostname.startsWith('172.29.') ||
-      hostname.startsWith('172.30.') ||
-      hostname.startsWith('172.31.') ||
+      /^172\.(1[6-9]|2[0-9]|3[0-1])\./.test(hostname) ||
       hostname.startsWith('192.168.') || 
-      hostname.includes('169.254') // Cloud metadata endpoint
+      hostname.startsWith('169.254.') || // Cloud metadata endpoint matches correctly at start
+      hostname === '::1' ||
+      hostname === '[::1]' ||
+      hostname.startsWith('fe80:') ||
+      hostname.startsWith('[fe80:') ||
+      hostname.startsWith('fc00:') ||
+      hostname.startsWith('[fc00:') ||
+      hostname.startsWith('fd') ||
+      hostname.startsWith('[fd') ||
+      hostname.includes('::ffff:') // IPv6-mapped IPv4
     ) {
       return false;
     }
@@ -70,12 +66,11 @@ export async function fetchPdfAsBase64(url: string): Promise<string | null> {
     return null;
   }
 
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 30000); // 30s timeout
+
   try {
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 30000); // 30s timeout
-    
     const res = await fetch(url, { signal: controller.signal });
-    clearTimeout(timeoutId);
     
     if (!res.ok) return null;
     
@@ -90,7 +85,13 @@ export async function fetchPdfAsBase64(url: string): Promise<string | null> {
     
     return Buffer.from(buffer).toString('base64');
   } catch (err) {
-    console.error('PDF fetch error:', err);
+    if ((err as any).name === 'AbortError') {
+      console.warn('PDF fetch timed out:', url);
+    } else {
+      console.error('PDF fetch error:', err);
+    }
     return null;
+  } finally {
+    clearTimeout(timeoutId);
   }
 }

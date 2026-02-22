@@ -322,8 +322,9 @@ export default function CoachChatClient({
 
   // ======== VOICE SESSION (Request-Response) ========
   const startVoiceSession = async () => {
+    let stream: MediaStream | null = null
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
+      stream = await navigator.mediaDevices.getUserMedia({ audio: true })
       const recorder = new MediaRecorder(stream)
       mediaRecorderRef.current = recorder
       audioChunksRef.current = []
@@ -333,7 +334,8 @@ export default function CoachChatClient({
       }
 
       recorder.onstop = async () => {
-        const audioBlob = new Blob(audioChunksRef.current, { type: 'audio/wav' })
+        const actualMimeType = recorder.mimeType || 'audio/webm'
+        const audioBlob = new Blob(audioChunksRef.current, { type: actualMimeType })
         processVoiceAudio(audioBlob)
       }
 
@@ -343,6 +345,10 @@ export default function CoachChatClient({
     } catch (err) {
       console.error('Mic access error:', err)
       setVoiceError('Microphone access denied.')
+      // Ensure stream is stopped if it was acquired but recording failed to start
+      if (stream) {
+        stream.getTracks().forEach(t => t.stop())
+      }
     }
   }
 
@@ -361,37 +367,43 @@ export default function CoachChatClient({
   const processVoiceAudio = async (blob: Blob) => {
     setIsVoiceConnecting(true)
     try {
+    const base64Audio = await new Promise<string>((resolve, reject) => {
       const reader = new FileReader()
+      reader.onloadend = () => resolve((reader.result as string).split(',')[1])
+      reader.onerror = () => reject(new Error('Failed to read audio'))
       reader.readAsDataURL(blob)
-      reader.onloadend = async () => {
-        const base64Audio = (reader.result as string).split(',')[1]
-        
-        const response = await fetch('/api/coach-voice', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            coachId: coach.id,
-            audioBase64: base64Audio
-          })
-        })
+    })
+    
+    const response = await fetch('/api/coach-voice', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        coachId: coach.id,
+        audioBase64: base64Audio,
+        mimeType: blob.type
+      })
+    })
 
-        if (!response.ok) throw new Error("Failed to get response")
-        
-        const data = await response.json()
-        if (data.text) {
-          setVoiceTranscripts(prev => [...prev, { text: data.text, isUser: false }])
-          setMessages(prev => [...prev, { role: 'assistant', content: data.text }])
-        }
-        
-        if (data.audio) {
-          const audio = new Audio(`data:audio/wav;base64,${data.audio}`)
-          currentAudioRef.current = audio
-          audio.onended = () => { currentAudioRef.current = null }
-          audio.play()
-        }
-      }
-    } catch (err) {
-      setVoiceError("Voice processing failed.")
+    if (!response.ok) {
+      const errData = await response.json().catch(() => ({}))
+      throw new Error(errData.error || "Failed to get response")
+    }
+    
+    const data = await response.json()
+    if (data.text) {
+      setVoiceTranscripts(prev => [...prev, { text: data.text, isUser: false }])
+      setMessages(prev => [...prev, { role: 'assistant', content: data.text }])
+    }
+    
+    if (data.audio) {
+      const audio = new Audio(`data:audio/wav;base64,${data.audio}`)
+      currentAudioRef.current = audio
+      audio.onended = () => { currentAudioRef.current = null }
+      audio.play()
+    }
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : "Voice processing failed"
+      setVoiceError(message)
     } finally {
       setIsVoiceConnecting(false)
     }
