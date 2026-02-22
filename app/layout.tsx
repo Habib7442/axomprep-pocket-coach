@@ -20,6 +20,7 @@ const instrumentSerif = Instrument_Serif({
 });
 
 export const metadata: Metadata = {
+  metadataBase: new URL("https://axomprep.in"),
   title: "Axomprep | Your AI Pocket Coach with Native Assamese Support",
   description: "The first universal AI coaching platform built for Assam. Learn anything instantly in your native language. Create custom AI coaches for any niche, from academic subjects to professional skills, with full Assamese and English support.",
   keywords: [

@@ -203,8 +203,17 @@ export const saveQuizResult = async (resultData: any) => {
 export const submitTestimonial = async (formData: { name: string; role?: string; content: string; rating: number }) => {
     const supabase = await createClient();
 
+    // Validate required fields exist and are strings
+    if (!formData.name || typeof formData.name !== 'string' || formData.name.trim().length === 0) {
+        return { success: false, error: "Name is required" };
+    }
+
+    if (!formData.content || typeof formData.content !== 'string') {
+        return { success: false, error: "Content is required" };
+    }
+
     // Validate rating is within expected range
-    if (formData.rating < 1 || formData.rating > 5 || !Number.isInteger(formData.rating)) {
+    if (typeof formData.rating !== 'number' || formData.rating < 1 || formData.rating > 5 || !Number.isInteger(formData.rating)) {
         return { success: false, error: "Rating must be an integer between 1 and 5" };
     }
     

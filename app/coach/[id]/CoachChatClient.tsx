@@ -182,14 +182,9 @@ export default function CoachChatClient({
   const [voiceTranscripts, setVoiceTranscripts] = useState<{ text: string; isUser: boolean }[]>([])
 
   // Real-time voice refs
-  const audioContextRef = useRef<AudioContext | null>(null)
-  const streamRef = useRef<MediaStream | null>(null)
-  const processorRef = useRef<ScriptProcessorNode | null>(null)
-  const sessionRef = useRef<any>(null)
-  const pendingAudioRef = useRef<Int16Array[]>([])
-  const playbackCtxRef = useRef<AudioContext | null>(null)
-  const nextPlayTimeRef = useRef(0)
-  const drainIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null)
+  const audioChunksRef = useRef<Blob[]>([])
+  const currentAudioRef = useRef<HTMLAudioElement | null>(null)
 
   useEffect(() => {
     chatEndRef.current?.scrollIntoView({ behavior: 'smooth' })
@@ -325,242 +320,81 @@ export default function CoachChatClient({
     }
   }
 
-  // ======== REAL-TIME VOICE (Gemini Live API) ========
+  // ======== VOICE SESSION (Request-Response) ========
   const startVoiceSession = async () => {
-    setIsVoiceConnecting(true)
-    setVoiceError(null)
-    setVoiceTranscripts([{ text: `Connecting to your ${coach.topic} coach...`, isUser: false }])
-
-    try {
-      const { GoogleGenAI, Modality } = await import('@google/genai')
-      const ai = new GoogleGenAI({ apiKey: process.env.NEXT_PUBLIC_GEMINI_API_KEY! })
-
-      const session = await ai.live.connect({
-        model: 'gemini-2.5-flash-native-audio-preview-09-2025',
-        config: {
-          responseModalities: [Modality.AUDIO],
-          speechConfig: {
-            voiceConfig: { prebuiltVoiceConfig: { voiceName: 'Zephyr' } },
-          },
-          systemInstruction: `You are "${coach.name}", an AI coach that ONLY discusses "${coach.topic}".
-If the user asks about anything else, politely refuse and redirect them to ${coach.topic}.
-Always respond in ${userLanguage}. Be educational, helpful and engaging.
-Keep responses concise and natural for voice conversation.`,
-          outputAudioTranscription: {},
-          inputAudioTranscription: {},
-        },
-        callbacks: {
-          onopen: () => {
-            setIsVoiceConnecting(false)
-            setIsVoiceActive(true)
-            setVoiceTranscripts(prev => [...prev, { text: 'Connected! Your coach is greeting you...', isUser: false }])
-            startAudioCapture()
-
-            // Send initial greeting prompt so the coach speaks first
-            setTimeout(() => {
-              if (sessionRef.current) {
-                sessionRef.current.sendClientContent({
-                  turns: [
-                    {
-                      role: 'user',
-                      parts: [{ text: `Greet me warmly! Introduce yourself as "${coach.name}", my ${coach.topic} coach. Keep it short and friendly (2-3 sentences max). Then ask me what I'd like to learn today. Respond in ${userLanguage}.` }]
-                    }
-                  ],
-                  turnComplete: true
-                })
-              }
-            }, 500)
-          },
-          onmessage: async (message: any) => {
-            // Handle audio output from Gemini
-            const base64Audio = message.serverContent?.modelTurn?.parts?.[0]?.inlineData?.data
-            if (base64Audio) {
-              const binaryString = window.atob(base64Audio)
-              const len = binaryString.length
-              const bytes = new Int16Array(len / 2)
-              const view = new DataView(new ArrayBuffer(len))
-              for (let i = 0; i < len; i++) {
-                (new Uint8Array(view.buffer))[i] = binaryString.charCodeAt(i)
-              }
-              for (let i = 0; i < bytes.length; i++) {
-                bytes[i] = view.getInt16(i * 2, true)
-              }
-              pendingAudioRef.current.push(bytes)
-              if (!drainIntervalRef.current) {
-                startAudioDrain()
-              }
-            }
-
-            // Handle transcriptions — Live API returns {text: "..."} objects
-            const inputTranscriptionRaw = (message.serverContent as any)?.inputTranscription
-            const inputText = typeof inputTranscriptionRaw === 'string' ? inputTranscriptionRaw : inputTranscriptionRaw?.text
-            if (inputText) {
-              setVoiceTranscripts(prev => {
-                const last = prev[prev.length - 1]
-                if (last && last.isUser) {
-                  return [...prev.slice(0, -1), { text: last.text + inputText, isUser: true }]
-                }
-                return [...prev, { text: inputText, isUser: true }]
-              })
-            }
-
-            const outputTranscriptionRaw = (message.serverContent as any)?.outputTranscription
-            const outputText = typeof outputTranscriptionRaw === 'string' ? outputTranscriptionRaw : outputTranscriptionRaw?.text
-            if (outputText) {
-              setVoiceTranscripts(prev => {
-                const last = prev[prev.length - 1]
-                if (last && !last.isUser && last.text !== 'Connected! Start speaking.' && !last.text.startsWith('Connecting')) {
-                  return [...prev.slice(0, -1), { text: last.text + outputText, isUser: false }]
-                }
-                return [...prev, { text: outputText, isUser: false }]
-              })
-            }
-          },
-          onerror: (err: any) => {
-            console.error('Live API Error:', err)
-            setVoiceError('Connection error. Please try again.')
-            stopVoiceSession()
-          },
-          onclose: () => {
-            stopVoiceSession()
-          }
-        }
-      })
-
-      sessionRef.current = session
-    } catch (err) {
-      console.error('Voice session error:', err)
-      setVoiceError('Failed to connect to voice server.')
-      setIsVoiceConnecting(false)
-    }
-  }
-
-  const startAudioCapture = async () => {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
-      streamRef.current = stream
+      const recorder = new MediaRecorder(stream)
+      mediaRecorderRef.current = recorder
+      audioChunksRef.current = []
 
-      const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 16000 })
-      audioContextRef.current = audioContext
-
-      const source = audioContext.createMediaStreamSource(stream)
-      const processor = audioContext.createScriptProcessor(4096, 1, 1)
-      processorRef.current = processor
-
-      processor.onaudioprocess = (e) => {
-        const inputData = e.inputBuffer.getChannelData(0)
-        const pcmData = new Int16Array(inputData.length)
-        for (let i = 0; i < inputData.length; i++) {
-          pcmData[i] = Math.max(-1, Math.min(1, inputData[i])) * 0x7FFF
-        }
-
-        if (sessionRef.current) {
-          // Chunk the base64 conversion to avoid stack overflow
-          const uint8 = new Uint8Array(pcmData.buffer)
-          let binary = ''
-          const chunkSize = 8192
-          for (let i = 0; i < uint8.length; i += chunkSize) {
-            binary += String.fromCharCode(...uint8.slice(i, i + chunkSize))
-          }
-          const base64Data = btoa(binary)
-          sessionRef.current.sendRealtimeInput({
-            media: { data: base64Data, mimeType: 'audio/pcm;rate=16000' }
-          })
-        }
+      recorder.ondataavailable = (e) => {
+        if (e.data.size > 0) audioChunksRef.current.push(e.data)
       }
 
-      source.connect(processor)
-      processor.connect(audioContext.destination)
+      recorder.onstop = async () => {
+        const audioBlob = new Blob(audioChunksRef.current, { type: 'audio/wav' })
+        processVoiceAudio(audioBlob)
+      }
+
+      recorder.start()
+      setIsVoiceActive(true)
+      setVoiceTranscripts(prev => [...prev, { text: "Listening...", isUser: false }])
     } catch (err) {
       console.error('Mic access error:', err)
       setVoiceError('Microphone access denied.')
     }
   }
 
-  // Merge all pending chunks into one large buffer and schedule it
-  const drainAudioBuffer = () => {
-    if (pendingAudioRef.current.length === 0) return
-
-    // Create playback context at 24kHz if not exists
-    if (!playbackCtxRef.current || playbackCtxRef.current.state === 'closed') {
-      playbackCtxRef.current = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 24000 })
-    }
-
-    const playCtx = playbackCtxRef.current
-
-    // Merge all pending chunks into one big Int16Array
-    const chunks = pendingAudioRef.current.splice(0)
-    const totalLength = chunks.reduce((acc, c) => acc + c.length, 0)
-    const merged = new Int16Array(totalLength)
-    let offset = 0
-    for (const chunk of chunks) {
-      merged.set(chunk, offset)
-      offset += chunk.length
-    }
-
-    // Create a single AudioBuffer from the merged data
-    const buffer = playCtx.createBuffer(1, merged.length, 24000)
-    const channelData = buffer.getChannelData(0)
-    for (let i = 0; i < merged.length; i++) {
-      channelData[i] = merged[i] / 32768.0
-    }
-
-    const source = playCtx.createBufferSource()
-    source.buffer = buffer
-    source.connect(playCtx.destination)
-
-    const now = playCtx.currentTime
-    const startAt = Math.max(now + 0.02, nextPlayTimeRef.current) // tiny 20ms lookahead
-    source.start(startAt)
-    nextPlayTimeRef.current = startAt + buffer.duration
-  }
-
-  const startAudioDrain = () => {
-    if (drainIntervalRef.current) return
-    // Drain every 150ms — accumulates chunks into bigger buffers
-    drainIntervalRef.current = setInterval(() => {
-      drainAudioBuffer()
-    }, 150)
-  }
-
-  const stopAudioDrain = () => {
-    if (drainIntervalRef.current) {
-      clearInterval(drainIntervalRef.current)
-      drainIntervalRef.current = null
-    }
-    // Flush any remaining audio
-    drainAudioBuffer()
-  }
-
   const stopVoiceSession = () => {
+    if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
+      mediaRecorderRef.current.stop()
+      mediaRecorderRef.current.stream.getTracks().forEach(t => t.stop())
+    }
     setIsVoiceActive(false)
-    setIsVoiceConnecting(false)
+    if (currentAudioRef.current) {
+      currentAudioRef.current.pause()
+      currentAudioRef.current = null
+    }
+  }
 
-    stopAudioDrain()
+  const processVoiceAudio = async (blob: Blob) => {
+    setIsVoiceConnecting(true)
+    try {
+      const reader = new FileReader()
+      reader.readAsDataURL(blob)
+      reader.onloadend = async () => {
+        const base64Audio = (reader.result as string).split(',')[1]
+        
+        const response = await fetch('/api/coach-voice', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            coachId: coach.id,
+            audioBase64: base64Audio
+          })
+        })
 
-    if (streamRef.current) {
-      streamRef.current.getTracks().forEach(track => track.stop())
-      streamRef.current = null
+        if (!response.ok) throw new Error("Failed to get response")
+        
+        const data = await response.json()
+        if (data.text) {
+          setVoiceTranscripts(prev => [...prev, { text: data.text, isUser: false }])
+          setMessages(prev => [...prev, { role: 'assistant', content: data.text }])
+        }
+        
+        if (data.audio) {
+          const audio = new Audio(`data:audio/wav;base64,${data.audio}`)
+          currentAudioRef.current = audio
+          audio.onended = () => { currentAudioRef.current = null }
+          audio.play()
+        }
+      }
+    } catch (err) {
+      setVoiceError("Voice processing failed.")
+    } finally {
+      setIsVoiceConnecting(false)
     }
-    if (processorRef.current) {
-      processorRef.current.disconnect()
-      processorRef.current = null
-    }
-    if (audioContextRef.current) {
-      audioContextRef.current.close()
-      audioContextRef.current = null
-    }
-    if (playbackCtxRef.current) {
-      playbackCtxRef.current.close()
-      playbackCtxRef.current = null
-    }
-    if (sessionRef.current) {
-      try { sessionRef.current.close() } catch {}
-      sessionRef.current = null
-    }
-
-    pendingAudioRef.current = []
-    nextPlayTimeRef.current = 0
   }
 
   const langLabel: Record<string, string> = {

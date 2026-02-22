@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/utils/supabase/server'
 import { GoogleGenAI } from '@google/genai'
+import { fetchPdfAsBase64 } from '@/lib/utils'
 
 const API_KEY = process.env.GEMINI_API_KEY
 
@@ -8,35 +9,6 @@ if (!API_KEY) {
   throw new Error('GEMINI_API_KEY environment variable is not configured')
 }
 const ai = new GoogleGenAI({ apiKey: API_KEY })
-
-// Fetch PDF from URL and convert to base64
-const MAX_PDF_SIZE = 10 * 1024 * 1024 // 10MB limit
-
-async function fetchPdfAsBase64(url: string): Promise<string | null> {
-  try {
-    const controller = new AbortController()
-    const timeoutId = setTimeout(() => controller.abort(), 30000) // 30s timeout
-    
-    const res = await fetch(url, { signal: controller.signal })
-    clearTimeout(timeoutId)
-    
-    if (!res.ok) return null
-    
-    const contentLength = res.headers.get('content-length')
-    if (contentLength && parseInt(contentLength) > MAX_PDF_SIZE) {
-      console.warn('PDF too large, skipping:', url)
-      return null
-    }
-    
-    const buffer = await res.arrayBuffer()
-    if (buffer.byteLength > MAX_PDF_SIZE) return null
-    
-    return Buffer.from(buffer).toString('base64')
-  } catch (err) {
-    console.error('PDF fetch error:', err)
-    return null
-  }
-}
 
 export async function POST(req: NextRequest) {
   try {
@@ -72,14 +44,19 @@ export async function POST(req: NextRequest) {
     }
 
     // Fetch coach info
-    const { data: coach } = await supabase
+    const { data: coach, error: coachError } = await supabase
       .from('coaches')
       .select('*')
       .eq('id', coachId)
       .eq('user_id', user.id)
       .single()
 
-    if (!coach) return NextResponse.json({ error: 'Coach not found' }, { status: 404 })
+    if (coachError && coachError.code !== 'PGRST116') {
+      console.error('Coach ownership check error:', coachError)
+      return NextResponse.json({ error: 'An internal error occurred' }, { status: 500 })
+    }
+
+    if (!coach) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
 
     const lang = profile?.native_language || coach.language || 'english'
 
@@ -191,9 +168,16 @@ export async function POST(req: NextRequest) {
       console.error('Failed to save assistant message:', assistantError)
     }
 
+    // Fetch updated credits for accurate UI feedback
+    const { data: updatedProfile } = await supabase
+      .from('profiles')
+      .select('credits')
+      .eq('id', user.id)
+      .single()
+
     return NextResponse.json({ 
       reply: aiReply, 
-      credits: (profile?.credits || 1) - 1 
+      credits: updatedProfile?.credits ?? 0 
     })
   } catch (err: any) {
     console.error('Chat API error:', err)

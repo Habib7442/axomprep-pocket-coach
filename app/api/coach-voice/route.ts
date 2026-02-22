@@ -24,14 +24,19 @@ export async function POST(req: NextRequest) {
     }
 
     // Fetch coach
-    const { data: coach } = await supabase
+    const { data: coach, error: coachError } = await supabase
       .from('coaches')
       .select('name, topic, language')
       .eq('id', coachId)
       .eq('user_id', user.id)
       .single()
 
-    if (!coach) return Response.json({ error: 'Coach not found' }, { status: 404 })
+    if (coachError && coachError.code !== 'PGRST116') {
+      console.error('Coach ownership check error:', coachError);
+      return Response.json({ error: 'An internal error occurred' }, { status: 500 });
+    }
+
+    if (!coach) return Response.json({ error: 'Forbidden' }, { status: 403 })
 
     // Fetch user profile for language
     const { data: profile } = await supabase

@@ -67,13 +67,20 @@ export async function completeOnboarding(onboardingData: {
 
   if (!user) throw new Error("Unauthorized");
 
+  const updates: Record<string, any> = {
+    profession: onboardingData.profession,
+    native_language: onboardingData.native_language,
+    onboarding_completed: true,
+    updated_at: new Date().toISOString()
+  };
+
+  if (onboardingData.student_class !== undefined) {
+    updates.student_class = onboardingData.student_class;
+  }
+
   const { error } = await supabase
     .from('profiles')
-    .update({
-      ...onboardingData,
-      onboarding_completed: true,
-      updated_at: new Date().toISOString()
-    })
+    .update(updates)
     .eq('id', user.id);
 
   if (error) throw error;

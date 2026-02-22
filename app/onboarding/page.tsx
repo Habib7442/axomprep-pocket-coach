@@ -57,12 +57,12 @@ export default function OnboardingPage() {
       })
       // Success fallback if server redirect doesn't trigger
       router.push('/dashboard')
-    } catch (err: any) {
-      if (err?.message === 'NEXT_REDIRECT' || err?.digest?.includes('NEXT_REDIRECT')) {
+    } catch (err: unknown) {
+      if (err instanceof Error && (err as any).digest?.startsWith('NEXT_REDIRECT')) {
         throw err;
       }
       console.error('Onboarding error:', err)
-      toast.error('Failed to complete onboarding. Please try again.')
+      toast.error(err instanceof Error ? err.message : 'Failed to complete onboarding. Please try again.')
     } finally {
       setLoading(false)
     }

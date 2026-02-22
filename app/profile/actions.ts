@@ -32,15 +32,15 @@ export async function updateProfile(formData: {
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) throw new Error('Unauthorized')
 
+  const updates: Record<string, unknown> = { updated_at: new Date().toISOString() }
+  if (formData.full_name !== undefined) updates.full_name = formData.full_name
+  if (formData.profession !== undefined) updates.profession = formData.profession
+  if (formData.student_class !== undefined) updates.student_class = formData.student_class
+  if (formData.native_language !== undefined) updates.native_language = formData.native_language
+
   const { error } = await supabase
     .from('profiles')
-    .update({
-      full_name: formData.full_name,
-      profession: formData.profession,
-      student_class: formData.student_class,
-      native_language: formData.native_language,
-      updated_at: new Date().toISOString()
-    })
+    .update(updates)
     .eq('id', user.id)
 
   if (error) throw error

@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { GoogleGenAI } from "@google/genai";
+import { fetchPdfAsBase64 } from "@/lib/utils";
 
 const API_KEY = process.env.GEMINI_API_KEY;
 
@@ -17,6 +18,9 @@ export async function POST(req: Request) {
     }
     if (!coach || typeof coach !== 'object') {
       return NextResponse.json({ error: "Invalid coach data" }, { status: 400 });
+    }
+    if (!coach.name || typeof coach.name !== 'string' || !coach.topic || typeof coach.topic !== 'string' || !coach.language || typeof coach.language !== 'string') {
+      return NextResponse.json({ error: "Missing required coach properties: name, topic, language" }, { status: 400 });
     }
     if (!history || !Array.isArray(history)) {
        return NextResponse.json({ error: "Invalid history data" }, { status: 400 });
@@ -62,35 +66,15 @@ export async function POST(req: Request) {
 
     // Handle PDF attachment if exists
     if (coach.pdfUrl) {
-      try {
-        const MAX_PDF_SIZE = 10 * 1024 * 1024; // 10MB
-        const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 30000); // 30s timeout
-
-        const pdfResponse = await fetch(coach.pdfUrl, { signal: controller.signal });
-        clearTimeout(timeoutId);
-
-        if (pdfResponse.ok) {
-          const contentLength = pdfResponse.headers.get('content-length');
-          if (contentLength && parseInt(contentLength) > MAX_PDF_SIZE) {
-            console.warn('PDF too large, skipping:', coach.pdfUrl);
-          } else {
-            const pdfBuffer = await pdfResponse.arrayBuffer();
-            if (pdfBuffer.byteLength <= MAX_PDF_SIZE) {
-              const base64Pdf = Buffer.from(pdfBuffer).toString("base64");
-              
-              // Add PDF to the very first user message where we provide system instructions
-              contents[0].parts.push({
-                inlineData: {
-                  data: base64Pdf,
-                  mimeType: "application/pdf"
-                }
-              });
-            }
+      const base64Pdf = await fetchPdfAsBase64(coach.pdfUrl);
+      if (base64Pdf) {
+        // Add PDF to the very first user message where we provide system instructions
+        contents[0].parts.push({
+          inlineData: {
+            data: base64Pdf,
+            mimeType: "application/pdf"
           }
-        }
-      } catch (e) {
-        console.error("Error fetching/processing PDF:", e);
+        });
       }
     }
 

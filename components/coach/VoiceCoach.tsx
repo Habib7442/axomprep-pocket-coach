@@ -3,12 +3,11 @@
 
 import React, { useState, useRef } from 'react';
 import { Mic, MicOff, Loader2 } from 'lucide-react';
-import { GoogleGenAI, Modality } from '@google/genai';
-import { decodeBase64, decodeAudioData, encodeBase64 } from '@/lib/audio-utils';
 import { Button } from '@/components/ui/button';
 import { toast } from 'sonner';
 
 interface VoiceCoachProps {
+  coachId: string;
   coachName: string;
   topic: string;
   language: string;
@@ -16,6 +15,7 @@ interface VoiceCoachProps {
 }
 
 export const VoiceCoach: React.FC<VoiceCoachProps> = ({ 
+  coachId,
   coachName, 
   topic, 
   language,
@@ -25,221 +25,111 @@ export const VoiceCoach: React.FC<VoiceCoachProps> = ({
   const [loading, setLoading] = useState(false);
   const [status, setStatus] = useState("Voice Ready");
   
-  const inputAudioContextRef = useRef<AudioContext | null>(null);
-  const outputAudioContextRef = useRef<AudioContext | null>(null);
-  const scriptProcessorRef = useRef<ScriptProcessorNode | null>(null);
-  const sourceNodeRef = useRef<MediaStreamAudioSourceNode | null>(null);
-  const sessionRef = useRef<any>(null);
-  const mediaStreamRef = useRef<MediaStream | null>(null);
-  const nextStartTimeRef = useRef(0);
-  const sourcesRef = useRef<Set<AudioBufferSourceNode>>(new Set());
-  const assistantBufferRef = useRef("");
-  const userBufferRef = useRef("");
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const audioChunksRef = useRef<Blob[]>([]);
+  const currentAudioRef = useRef<HTMLAudioElement | null>(null);
 
-  const getSystemInstruction = (lang: string) => {
-    return `You are ${coachName}, an elite personal AI coach teaching ${topic}. 
-    Speak primarily in ${lang}. Use simple, clear, and encouraging tone. 
-    Maintain a helpful and academic persona. 
-    Provide sharp, concise audio responses suitable for live conversation.`;
-  };
-
-  const startSession = async () => {
-    if (loading || isActive) return;
-    setLoading(true);
-    setStatus("Connecting...");
-    
+  const startRecording = async () => {
     try {
-      const configRes = await fetch('/api/config/gemini');
-      const { key } = await configRes.json();
-      if (!key) throw new Error("API Key missing");
-
-      const genAI = new GoogleGenAI({ apiKey: key });
-      
-      const inputCtx = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 16000 });
-      const outputCtx = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 24000 });
-      await inputCtx.resume();
-      await outputCtx.resume();
-      
-      inputAudioContextRef.current = inputCtx;
-      outputAudioContextRef.current = outputCtx;
-
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      mediaStreamRef.current = stream;
+      const recorder = new MediaRecorder(stream);
+      mediaRecorderRef.current = recorder;
+      audioChunksRef.current = [];
 
-      const sessionPromise = genAI.live.connect({
-        model: 'gemini-2.0-flash-exp', 
-        callbacks: {
-          onopen: () => {
-            console.log("WebSocket opened successfully");
-            setStatus("Live");
-            setIsActive(true);
-            setLoading(false);
+      recorder.ondataavailable = (e) => {
+        if (e.data.size > 0) audioChunksRef.current.push(e.data);
+      };
 
-            // Greet the user first immediately upon connection
-            sessionPromise.then(session => {
-              if (session) {
-                session.sendRealtimeInput({
-                  text: `Hello! I am ${coachName}. I am ready to help you with ${topic}. Please greet the student in ${language}. Keep it very short.` 
-                });
-              }
-            });
+      recorder.onstop = async () => {
+        const audioBlob = new Blob(audioChunksRef.current, { type: 'audio/wav' });
+        await processAudio(audioBlob);
+      };
 
-            console.log("Session ready for voice interaction.");
-
-            const source = inputCtx.createMediaStreamSource(stream);
-            const scriptProcessor = inputCtx.createScriptProcessor(4096, 1, 1);
-            sourceNodeRef.current = source;
-            scriptProcessorRef.current = scriptProcessor;
-            
-            let chunkCount = 0;
-            scriptProcessor.onaudioprocess = (e) => {
-              const inputData = e.inputBuffer.getChannelData(0);
-              const l = inputData.length;
-              const int16 = new Int16Array(l);
-              for (let i = 0; i < l; i++) int16[i] = inputData[i] * 32768;
-              const pcmBlob = { 
-                data: encodeBase64(new Uint8Array(int16.buffer)), 
-                mimeType: 'audio/pcm;rate=16000' 
-              };
-              
-              chunkCount++;
-              if (chunkCount % 50 === 0) console.log("Audio chunks sent to AI:", chunkCount);
-
-              sessionPromise.then(session => {
-                if (session) {
-                  session.sendRealtimeInput({ media: pcmBlob });
-                }
-              }).catch(err => console.error("Send error:", err));
-            };
-
-            source.connect(scriptProcessor);
-            scriptProcessor.connect(inputCtx.destination);
-          },
-          onmessage: async (message: any) => {
-            console.log("Live Message Received:", JSON.stringify(message, (key, value) => {
-              if (key === 'data' && typeof value === 'string' && value.length > 50) return `[Binary Data: ${value.length} bytes]`;
-              return value;
-            }, 2));
-            
-            const parts = message.serverContent?.modelTurn?.parts;
-            if (parts) {
-              console.log(`Received modelTurn with ${parts.length} parts`);
-            }
-
-            const audioData = parts?.[0]?.inlineData?.data || parts?.[1]?.inlineData?.data;
-            
-            if (audioData) {
-              if (outputAudioContextRef.current) {
-                const ctx = outputAudioContextRef.current;
-                if (ctx.state === 'suspended') await ctx.resume();
-                
-                try {
-                  nextStartTimeRef.current = Math.max(nextStartTimeRef.current, ctx.currentTime);
-                  const buffer = await decodeAudioData(decodeBase64(audioData), ctx, 24000, 1);
-                  const source = ctx.createBufferSource();
-                  source.buffer = buffer;
-                  source.connect(ctx.destination);
-                  source.addEventListener('ended', () => {
-                    sourcesRef.current.delete(source);
-                  });
-                  source.start(nextStartTimeRef.current);
-                  nextStartTimeRef.current += buffer.duration;
-                  sourcesRef.current.add(source);
-                  console.log("Playing audio buffer. Duration:", buffer.duration);
-                } catch (audioErr) {
-                  console.error("Audio Decode Error:", audioErr);
-                }
-              }
-            }
-
-            if (message.serverContent?.inputTranscription) {
-              userBufferRef.current += message.serverContent.inputTranscription.text;
-            }
-            if (message.serverContent?.outputTranscription) {
-              assistantBufferRef.current += message.serverContent.outputTranscription.text;
-            }
-
-            if (message.serverContent?.turnComplete) {
-              console.log("Turn Complete. Emitting transcriptions.");
-              if (userBufferRef.current) {
-                onTranscription?.(userBufferRef.current, 'user');
-                userBufferRef.current = "";
-              }
-              if (assistantBufferRef.current) {
-                onTranscription?.(assistantBufferRef.current, 'assistant');
-                assistantBufferRef.current = "";
-              }
-            }
-
-            if (message.serverContent?.interrupted) {
-              console.log("Playback Interrupted");
-              sourcesRef.current.forEach(s => { try { s.stop(); } catch(e) {} });
-              sourcesRef.current.clear();
-              nextStartTimeRef.current = 0;
-              // Clear assistant buffer on interruption to stay synced
-              assistantBufferRef.current = "";
-            }
-          },
-          onerror: (e) => {
-            console.error("Live API Error:", e);
-            stopSession();
-          },
-          onclose: (e) => {
-            console.log("WebSocket closed:", e);
-            stopSession();
-          }
-        },
-        config: {
-          responseModalities: [Modality.AUDIO],
-          speechConfig: {
-            voiceConfig: { prebuiltVoiceConfig: { voiceName: 'Zephyr' } }
-          },
-          outputAudioTranscription: {},
-          inputAudioTranscription: {},
-          systemInstruction: getSystemInstruction(language) as any
-        }
-      });
-
-      sessionRef.current = await sessionPromise;
-    } catch (err: any) {
-      setLoading(false);
-      setStatus("Error");
-      toast.error(err.message || "Voice session failed");
-      console.error(err);
-      stopSession();
+      recorder.start();
+      setIsActive(true);
+      setStatus("Listening...");
+    } catch (err) {
+      console.error("Mic access error:", err);
+      toast.error("Could not access microphone");
     }
   };
 
-  const stopSession = () => {
+  const stopRecording = () => {
+    if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
+      mediaRecorderRef.current.stop();
+      mediaRecorderRef.current.stream.getTracks().forEach(t => t.stop());
+    }
     setIsActive(false);
-    setLoading(false);
-    setStatus("Voice Ready");
-    
-    if (scriptProcessorRef.current) { 
-      try { 
-        scriptProcessorRef.current.onaudioprocess = null; 
-        scriptProcessorRef.current.disconnect(); 
-      } catch (e) {}
-    }
-    if (sourceNodeRef.current) try { sourceNodeRef.current.disconnect(); } catch (e) {}
-    if (mediaStreamRef.current) mediaStreamRef.current.getTracks().forEach(t => t.stop());
-    if (sessionRef.current) try { sessionRef.current.close(); } catch(e) {}
-    
-    if (inputAudioContextRef.current && inputAudioContextRef.current.state !== 'closed') {
-      try { inputAudioContextRef.current.close(); } catch(e) {}
-    }
-    if (outputAudioContextRef.current && outputAudioContextRef.current.state !== 'closed') {
-      try { outputAudioContextRef.current.close(); } catch(e) {}
-    }
+    setStatus("Processing...");
+  };
 
-    sourcesRef.current.forEach(s => { try { s.stop(); } catch(e) {} });
-    sourcesRef.current.clear();
-    nextStartTimeRef.current = 0;
-    
-    inputAudioContextRef.current = null;
-    outputAudioContextRef.current = null;
-    sessionRef.current = null;
-    mediaStreamRef.current = null;
+  const processAudio = async (blob: Blob) => {
+    setLoading(true);
+    try {
+      const reader = new FileReader();
+      reader.readAsDataURL(blob);
+      reader.onloadend = async () => {
+        const base64Audio = (reader.result as string).split(',')[1];
+        
+        const response = await fetch('/api/coach-voice', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            coachId,
+            audioBase64: base64Audio
+          })
+        });
+
+        if (!response.ok) {
+          const errData = await response.json();
+          throw new Error(errData.error || "Failed to get response from coach");
+        }
+        
+        const data = await response.json();
+        if (data.text) {
+          onTranscription?.(data.text, 'assistant');
+        }
+        
+        if (data.audio) {
+          await playResponse(data.audio);
+        }
+      };
+    } catch (err: any) {
+      toast.error(err.message || "Voice processing failed");
+      setStatus("Voice Ready");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const playResponse = async (base64Audio: string) => {
+    return new Promise((resolve) => {
+      const audio = new Audio(`data:audio/wav;base64,${base64Audio}`);
+      currentAudioRef.current = audio;
+      setStatus("Speaking...");
+      audio.onended = () => {
+        currentAudioRef.current = null;
+        setStatus("Voice Ready");
+        resolve(true);
+      };
+      audio.play().catch(err => {
+        console.error("Playback error:", err);
+        setStatus("Voice Ready");
+        resolve(false);
+      });
+    });
+  };
+
+  const toggleSession = () => {
+    if (isActive) {
+      stopRecording();
+    } else {
+      if (currentAudioRef.current) {
+        currentAudioRef.current.pause();
+        currentAudioRef.current = null;
+      }
+      startRecording();
+    }
   };
 
   return (
@@ -257,7 +147,7 @@ export const VoiceCoach: React.FC<VoiceCoachProps> = ({
       )}
       
       <Button
-        onClick={isActive ? stopSession : startSession}
+        onClick={toggleSession}
         disabled={loading}
         size="icon"
         className={`w-14 h-14 md:w-16 md:h-16 rounded-3xl shadow-2xl transition-all duration-300 group border-none ${

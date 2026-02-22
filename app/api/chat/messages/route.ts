@@ -15,15 +15,20 @@ export async function GET(req: NextRequest) {
     if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
     // Verify coach ownership
-    const { data: coach } = await supabase
+    const { data: coach, error: coachError } = await supabase
       .from('coaches')
       .select('id')
       .eq('id', coachId)
       .eq('user_id', user.id)
       .single();
 
+    if (coachError && coachError.code !== 'PGRST116') {
+      console.error('Coach ownership check error:', coachError);
+      return NextResponse.json({ error: "An internal error occurred" }, { status: 500 });
+    }
+
     if (!coach) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 403 });
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
 
     const { data, error } = await supabase
@@ -57,15 +62,20 @@ export async function POST(req: NextRequest) {
     if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
     // Verify coach ownership
-    const { data: coachOwner } = await supabase
+    const { data: coachOwner, error: coachError } = await supabase
       .from('coaches')
       .select('id')
       .eq('id', coachId)
       .eq('user_id', user.id)
       .single();
 
+    if (coachError && coachError.code !== 'PGRST116') {
+      console.error('Coach ownership check error:', coachError);
+      return NextResponse.json({ error: "An internal error occurred" }, { status: 500 });
+    }
+
     if (!coachOwner) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 403 });
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
 
     const { data, error } = await supabase

@@ -524,6 +524,7 @@ export default function CoachClient({ coach, initialMessages, userProfile }: Coa
       </div>
 
       <VoiceCoach 
+        coachId={coach.id}
         coachName={coach.name}
         topic={coach.topic}
         language={coach.language}

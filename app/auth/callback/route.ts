@@ -13,11 +13,16 @@ export async function GET(request: Request) {
     const { error } = await supabase.auth.exchangeCodeForSession(code)
     if (!error) {
       const userResponse = await supabase.auth.getUser()
-      const userId = userResponse.data.user?.id
+      const user = userResponse.data.user
+      if (!user) {
+        console.error('Auth callback: No user found after session exchange')
+        return NextResponse.redirect(`${origin}/auth/auth-code-error`)
+      }
+
       const { data: profile, error: profileError } = await supabase
         .from('profiles')
         .select('onboarding_completed')
-        .eq('id', userId)
+        .eq('id', user.id)
         .single()
       
       if (profileError) {

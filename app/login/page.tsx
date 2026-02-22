@@ -29,23 +29,26 @@ import { Suspense } from 'react'
 function LoginForm() {
   const [isSignUp, setIsSignUp] = useState(false)
   const [showPassword, setShowPassword] = useState(false)
+  const [formError, setFormError] = useState<string | null>(null)
   const searchParams = useSearchParams()
   const error = searchParams.get('error')
   const message = searchParams.get('message')
 
   const handleAction = async (formData: FormData) => {
+    setFormError(null);
     try {
       if (isSignUp) {
         await signup(formData);
       } else {
         await login(formData);
       }
-    } catch (error: any) {
+    } catch (error: unknown) {
       // Re-throw redirect errors so Next.js can handle them
-      if (error?.message === 'NEXT_REDIRECT' || error?.digest?.includes('NEXT_REDIRECT')) {
+      if (error instanceof Error && (error as any).digest?.startsWith('NEXT_REDIRECT')) {
         throw error;
       }
       console.error('Authentication error:', error);
+      setFormError(error instanceof Error ? error.message : 'Authentication failed. Please try again.');
     }
   };
 
@@ -68,11 +71,11 @@ function LoginForm() {
           <div className="absolute -inset-1 bg-gradient-to-r from-orange-500 via-blue-500 to-emerald-500 rounded-[2.6rem] blur opacity-25 group-hover:opacity-40 transition duration-1000 group-hover:duration-200"></div>
           
           <div className="relative bg-white border border-zinc-100 p-8 rounded-[2.5rem] shadow-2xl space-y-6">
-            {error && (
+            {(error || formError) && (
               <Alert variant="destructive" className="rounded-2xl border-red-100 bg-red-50/50">
                 <AlertCircle className="h-4 w-4" />
                 <AlertTitle>Error</AlertTitle>
-                <AlertDescription className="font-medium">{error}</AlertDescription>
+                <AlertDescription className="font-medium">{error || formError}</AlertDescription>
               </Alert>
             )}
             {message && (
@@ -86,13 +89,15 @@ function LoginForm() {
             <div className="space-y-4">
               <button
                 onClick={async () => {
+                  setFormError(null);
                   try {
                     await signInWithGoogle()
-                  } catch (error: any) {
-                    if (error?.message === 'NEXT_REDIRECT' || error?.digest?.includes('NEXT_REDIRECT')) {
+                  } catch (error: unknown) {
+                    if (error instanceof Error && (error as any).digest?.startsWith('NEXT_REDIRECT')) {
                       throw error;
                     }
                     console.error('Google sign-in error:', error);
+                    setFormError(error instanceof Error ? error.message : 'Google sign-in failed.');
                   }
                 }}
                 className="w-full flex items-center justify-center gap-3 px-6 py-4 rounded-2xl border-2 border-zinc-100 bg-white hover:bg-zinc-50 transition-all font-bold group"
