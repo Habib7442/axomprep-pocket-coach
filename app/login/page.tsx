@@ -38,7 +38,7 @@ function LoginForm() {
   const handleAction = async (formData: FormData) => {
     setFormError(null);
     if (error || message) {
-      router.replace('/login', { scroll: false });
+      window.history.replaceState(null, '', '/login');
     }
     try {
       if (isSignUp) {
@@ -95,7 +95,7 @@ function LoginForm() {
                 onClick={async () => {
                   setFormError(null);
                   if (error || message) {
-                    router.replace('/login', { scroll: false });
+                    window.history.replaceState(null, '', '/login');
                   }
                   try {
                     await signInWithGoogle()

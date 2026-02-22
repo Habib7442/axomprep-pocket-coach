@@ -95,11 +95,16 @@ export const VoiceCoach: React.FC<VoiceCoachProps> = ({
     
     const data = await response.json();
     if (data.text) {
+      if (data.userTranscript) {
+        onTranscription?.(data.userTranscript, 'user');
+      }
       onTranscription?.(data.text, 'assistant');
     }
     
     if (data.audio) {
       await playResponse(data.audio);
+    } else {
+      setStatus("Voice Ready");
     }
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : "Voice processing failed";

@@ -384,13 +384,22 @@ export default function CoachChatClient({
       })
     })
 
-    if (!response.ok) {
-      const errData = await response.json().catch(() => ({}))
-      throw new Error(errData.error || "Failed to get response")
-    }
-    
     const data = await response.json()
+    if (!response.ok) {
+      if (data.errorCode === 'NO_CREDITS') {
+        if (typeof data.credits === 'number') setCredits(data.credits)
+        setShowNoCreditsDialog(true)
+        throw new Error(data.error || "Out of credits")
+      }
+      throw new Error(data.error || "Failed to get response")
+    }
+
     if (data.text) {
+      if (typeof data.credits === 'number') setCredits(data.credits)
+      if (data.userTranscript) {
+        setVoiceTranscripts(prev => [...prev, { text: data.userTranscript, isUser: true }])
+        setMessages(prev => [...prev, { role: 'user', content: data.userTranscript }])
+      }
       setVoiceTranscripts(prev => [...prev, { text: data.text, isUser: false }])
       setMessages(prev => [...prev, { role: 'assistant', content: data.text }])
     }

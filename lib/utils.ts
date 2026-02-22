@@ -44,10 +44,7 @@ export function isValidExternalUrl(urlString: string): boolean {
       hostname === '[::1]' ||
       hostname.startsWith('fe80:') ||
       hostname.startsWith('[fe80:') ||
-      hostname.startsWith('fc00:') ||
-      hostname.startsWith('[fc00:') ||
-      hostname.startsWith('fd') ||
-      hostname.startsWith('[fd') ||
+      /^\[?f[cd][0-9a-f]{2}:/.test(hostname) || // IPv6 Unique Local Address (fc00::/7)
       hostname.includes('::ffff:') // IPv6-mapped IPv4
     ) {
       return false;
