@@ -4,7 +4,21 @@ import { revalidatePath } from 'next/cache'
 import { redirect } from 'next/navigation'
 import { createClient } from '@/utils/supabase/server'
 
-const getURL = () => {
+import { headers } from 'next/headers'
+
+const getURL = async () => {
+  // Use headers to get the current host and protocol dynamically.
+  // This is more reliable for custom domains than environment variables.
+  const headerList = await headers()
+  const host = headerList.get('host')
+  const protocol = headerList.get('x-forwarded-proto') || 'https'
+  
+  if (host) {
+    const url = `${protocol}://${host}`
+    return url.endsWith('/') ? url : `${url}/`
+  }
+
+  // Fallback to environment variables
   let url =
     process?.env?.NEXT_PUBLIC_SITE_URL ?? // Set this to your site URL in production
     process?.env?.NEXT_PUBLIC_VERCEL_URL ?? // Automatically set on Vercel
@@ -103,7 +117,7 @@ export async function signup(formData: FormData) {
     email, 
     password,
     options: {
-      emailRedirectTo: `${getURL()}auth/callback`,
+      emailRedirectTo: `${await getURL()}auth/callback`,
     }
   })
 
@@ -120,7 +134,7 @@ export async function signInWithGoogle() {
   const { data, error } = await supabase.auth.signInWithOAuth({
     provider: 'google',
     options: {
-      redirectTo: `${getURL()}auth/callback`,
+      redirectTo: `${await getURL()}auth/callback`,
     },
   })
 
