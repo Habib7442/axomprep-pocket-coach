@@ -22,14 +22,23 @@ export async function POST(req: NextRequest) {
     if (language && typeof language !== 'string') return NextResponse.json({ error: 'Language must be a string' }, { status: 400 })
 
     // Fetch profile to check tier (Pro = unlimited)
-    const { data: profile } = await supabase
+    const { data: profile, error: profileError } = await supabase
       .from('profiles')
-      .select('credits, tier')
+      .select('tier')
       .eq('id', user.id)
       .single()
 
+    if (profileError && profileError.code !== 'PGRST116') {
+      console.error('Profile fetch error:', profileError)
+      return NextResponse.json({ error: 'Failed to verify account status' }, { status: 500 })
+    }
+
+    if (!profile) {
+      return NextResponse.json({ error: 'User profile not found.' }, { status: 404 })
+    }
+
     // Pro users get unlimited access — only deduct for free users
-    if (profile?.tier !== 'pro') {
+    if (profile.tier !== 'pro') {
       const { data: success, error: rpcError } = await supabase.rpc('deduct_credit', { 
         user_id: user.id,
         amount: 1 

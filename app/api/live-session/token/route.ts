@@ -19,20 +19,29 @@ export async function POST(req: NextRequest) {
   }
 
   // ── Credit check & atomic deduction ──────────────────────────────────────
-  const { data: profile } = await supabase
+  const { data: profile, error: profileError } = await supabase
     .from('profiles')
     .select('credits, tier')
     .eq('id', user.id)
     .single();
 
+  if (profileError && profileError.code !== 'PGRST116') {
+    console.error('Profile fetch error:', profileError);
+    return NextResponse.json({ error: 'Failed to verify account status' }, { status: 500 });
+  }
+
+  if (!profile) {
+    return NextResponse.json({ error: 'User profile not found.' }, { status: 404 });
+  }
+
   // Pro users get unlimited access — only check/deduct for free users
-  if (profile?.tier !== 'pro') {
-    if (!profile || profile.credits <= 0) {
+  if (profile.tier !== 'pro') {
+    if (profile.credits <= 0) {
       return NextResponse.json(
         {
           error: "You've run out of credits! Upgrade your plan to keep chatting.",
           errorCode: 'NO_CREDITS',
-          credits: profile?.credits ?? 0,
+          credits: profile.credits,
         },
         { status: 403 }
       );

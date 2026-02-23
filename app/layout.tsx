@@ -59,7 +59,23 @@ export const metadata: Metadata = {
   },
   icons: {
     icon: "/logo.png",
-  }
+    apple: "/logo.png",
+  },
+  appleWebApp: {
+    capable: true,
+    statusBarStyle: "default",
+    title: "AxomPrep",
+  },
+};
+
+import { Viewport } from "next";
+
+export const viewport: Viewport = {
+  themeColor: "#f97316",
+  width: "device-width",
+  initialScale: 1,
+  maximumScale: 1,
+  userScalable: false,
 };
 
 import { SpeedInsights } from "@vercel/speed-insights/next";

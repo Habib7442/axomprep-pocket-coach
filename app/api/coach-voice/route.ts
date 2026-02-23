@@ -47,12 +47,17 @@ export async function POST(req: NextRequest) {
 
     if (profileError && profileError.code !== 'PGRST116') {
       console.error('Profile fetch error:', profileError)
+      return Response.json({ error: 'Failed to verify account status' }, { status: 500 })
     }
 
-    const lang = profile?.native_language || coach.language || 'english'
+    if (!profile) {
+      return Response.json({ error: 'User profile not found.' }, { status: 404 })
+    }
+
+    const lang = profile.native_language || coach.language || 'english'
 
     // Pro users get unlimited access — only deduct for free users
-    if (profile?.tier !== 'pro') {
+    if (profile.tier !== 'pro') {
       const { data: success, error: rpcError } = await supabase.rpc('deduct_credit', { 
         user_id: user.id,
         amount: 1 

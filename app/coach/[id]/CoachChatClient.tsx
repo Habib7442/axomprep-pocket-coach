@@ -26,13 +26,25 @@ interface Message {
 // ── Copy Button Component ──────────────────────────────────────────────────
 function CopyButton({ text }: { text: string }) {
   const [copied, setCopied] = useState(false)
+  const timeoutRef = useRef<NodeJS.Timeout | null>(null)
+
+  useEffect(() => {
+    return () => {
+      if (timeoutRef.current) clearTimeout(timeoutRef.current)
+    }
+  }, [])
+
   const handleCopy = async () => {
     try {
+      if (timeoutRef.current) clearTimeout(timeoutRef.current)
       await navigator.clipboard.writeText(text)
       setCopied(true)
-      setTimeout(() => setCopied(false), 2000)
-    } catch {}
+      timeoutRef.current = setTimeout(() => setCopied(false), 2000)
+    } catch (err) {
+      console.error('Failed to copy:', err)
+    }
   }
+
   return (
     <button
       onClick={handleCopy}
@@ -253,7 +265,11 @@ function DownloadPDFButton({ messageId, content }: { messageId: string, content:
       }
 
       pdf.save(`AxomPrep-Lesson-${Date.now()}.pdf`)
-    } catch (err) { console.error('PDF failed:', err) }
+    } catch (err) {
+      console.error('PDF failed:', err)
+      const { toast } = await import('sonner')
+      toast.error('Failed to generate PDF. Please try again.')
+    }
     setIsDownloading(false)
   }
 
