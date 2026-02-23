@@ -25,10 +25,10 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Message cannot be empty' }, { status: 400 })
     }
 
-    // Fetch profile for context
+    // Fetch profile for context (include tier for Pro check)
     const { data: profile, error: profileError } = await supabase
       .from('profiles')
-      .select('credits, native_language, profession, student_class')
+      .select('credits, tier, native_language, profession, student_class')
       .eq('id', user.id)
       .single()
 
@@ -36,18 +36,19 @@ export async function POST(req: NextRequest) {
       console.error('Profile fetch error:', profileError)
     }
 
-    // Atomic credit check and deduction BEFORE AI call
-    const { data: success, error: rpcError } = await supabase.rpc('deduct_credit', { 
-      user_id: user.id,
-      amount: 1 
-    })
-    
-    if (rpcError || !success) {
-      return NextResponse.json({ 
-        error: 'You\'ve run out of credits! Upgrade your plan to keep chatting.',
-        errorCode: 'NO_CREDITS',
-        credits: profile?.credits || 0
-      }, { status: 403 })
+    // Pro users get unlimited access — only deduct for free users
+    if (profile?.tier !== 'pro') {
+      const { data: success, error: rpcError } = await supabase.rpc('deduct_credit', { 
+        user_id: user.id,
+        amount: 1 
+      })
+      if (rpcError || !success) {
+        return NextResponse.json({ 
+          error: 'You\'ve run out of credits! Upgrade your plan to keep chatting.',
+          errorCode: 'NO_CREDITS',
+          credits: profile?.credits || 0
+        }, { status: 403 })
+      }
     }
 
     // Fetch coach info

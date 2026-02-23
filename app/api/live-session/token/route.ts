@@ -21,36 +21,38 @@ export async function POST(req: NextRequest) {
   // ── Credit check & atomic deduction ──────────────────────────────────────
   const { data: profile } = await supabase
     .from('profiles')
-    .select('credits')
+    .select('credits, tier')
     .eq('id', user.id)
     .single();
 
-  if (!profile || profile.credits <= 0) {
-    return NextResponse.json(
-      {
-        error: "You've run out of credits! Upgrade your plan to keep chatting.",
-        errorCode: 'NO_CREDITS',
-        credits: profile?.credits ?? 0,
-      },
-      { status: 403 }
-    );
-  }
+  // Pro users get unlimited access — only check/deduct for free users
+  if (profile?.tier !== 'pro') {
+    if (!profile || profile.credits <= 0) {
+      return NextResponse.json(
+        {
+          error: "You've run out of credits! Upgrade your plan to keep chatting.",
+          errorCode: 'NO_CREDITS',
+          credits: profile?.credits ?? 0,
+        },
+        { status: 403 }
+      );
+    }
 
-  // Atomically deduct 1 credit (uses RPC so there's no race condition)
-  const { data: success, error: rpcError } = await supabase.rpc('deduct_credit', {
-    user_id: user.id,
-    amount: 1
-  });
+    const { data: success, error: rpcError } = await supabase.rpc('deduct_credit', {
+      user_id: user.id,
+      amount: 1
+    });
 
-  if (rpcError || !success) {
-    return NextResponse.json(
-      {
-        error: "You've run out of credits! Upgrade your plan to keep chatting.",
-        errorCode: 'NO_CREDITS',
-        credits: profile?.credits ?? 0,
-      },
-      { status: 403 }
-    );
+    if (rpcError || !success) {
+      return NextResponse.json(
+        {
+          error: "You've run out of credits! Upgrade your plan to keep chatting.",
+          errorCode: 'NO_CREDITS',
+          credits: profile?.credits ?? 0,
+        },
+        { status: 403 }
+      );
+    }
   }
 
   // ── Parse request body ────────────────────────────────────────────────────

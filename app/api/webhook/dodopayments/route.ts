@@ -38,10 +38,10 @@ export const POST = Webhooks({
       console.error("DODO_WEBHOOK: Failed to insert transaction", insertError);
     }
 
-    // 2. Update user tier in profiles
+    // 2. Update user tier and top up credits in profiles
     const { error: updateError } = await supabase
       .from("profiles")
-      .update({ tier: "pro" })
+      .update({ tier: "pro", credits: 999 })
       .eq("id", userId);
 
     if (updateError) {
@@ -49,7 +49,7 @@ export const POST = Webhooks({
       throw updateError;
     }
     
-    console.log(`DODO_WEBHOOK: Successfully upgraded user ${userId} to pro`);
+    console.log(`DODO_WEBHOOK: Successfully upgraded user ${userId} to pro with 999 credits`);
   },
   onSubscriptionActive: async (event: any) => {
     console.log("DODO_WEBHOOK: Subscription Active", { 
@@ -79,10 +79,10 @@ export const POST = Webhooks({
       console.error("DODO_WEBHOOK: Failed to upsert subscription transaction", insertError);
     }
     
-    // 2. Update user tier in profiles
+    // 2. Update user tier and top up credits in profiles
     const { error: updateError } = await supabase
       .from("profiles")
-      .update({ tier: "pro" })
+      .update({ tier: "pro", credits: 999 })
       .eq("id", userId);
 
     if (updateError) {
@@ -90,6 +90,6 @@ export const POST = Webhooks({
       throw updateError;
     }
 
-    console.log(`DODO_WEBHOOK: Successfully activated pro tier for user ${userId}`);
+    console.log(`DODO_WEBHOOK: Successfully activated pro tier for user ${userId} with 999 credits`);
   }
 } as any);

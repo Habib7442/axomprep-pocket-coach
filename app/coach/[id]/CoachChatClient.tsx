@@ -7,7 +7,8 @@ import remarkGfm from 'remark-gfm'
 import {
   ArrowLeft, Send, Loader2, Mic, MicOff, Volume2, BookOpen,
   Mic2, Sparkles, Play, Pause, Download, X, Bot, User as UserIcon,
-  ChevronUp, MessageSquarePlus, Zap, BrainCircuit, CheckCircle2, AlertCircle, Trophy
+  ChevronUp, MessageSquarePlus, Zap, BrainCircuit, CheckCircle2, AlertCircle, Trophy,
+  Copy, Check, Gamepad2, FileText, Download as DownloadIcon, Image as ImageIcon
 } from 'lucide-react'
 import {
   AlertDialog, AlertDialogContent, AlertDialogHeader, AlertDialogTitle,
@@ -21,6 +22,307 @@ interface Message {
   content: string
   created_at?: string
 }
+
+// ── Copy Button Component ──────────────────────────────────────────────────
+function CopyButton({ text }: { text: string }) {
+  const [copied, setCopied] = useState(false)
+  const handleCopy = async () => {
+    try {
+      await navigator.clipboard.writeText(text)
+      setCopied(true)
+      setTimeout(() => setCopied(false), 2000)
+    } catch {}
+  }
+  return (
+    <button
+      onClick={handleCopy}
+      className="flex items-center gap-1.5 text-[10px] font-black uppercase tracking-widest text-orange-500/80 hover:text-orange-600 transition-all group px-2.5 py-1.5 rounded-xl hover:bg-orange-50/50"
+    >
+      {copied ? (
+        <><Check className="w-3 h-3 text-green-600" /><span className="text-green-600">Copied!</span></>
+      ) : (
+        <><Copy className="w-3 h-3 transition-transform group-hover:rotate-6" /><span>Copy</span></>
+      )}
+    </button>
+  )
+}
+
+// ── Download PDF Component ────────────────────────────────────────────────
+function DownloadPDFButton({ messageId, content }: { messageId: string, content: string }) {
+  const [isDownloading, setIsDownloading] = useState(false)
+
+  const handleDownload = async () => {
+    setIsDownloading(true)
+    try {
+      const { jsPDF } = await import('jspdf')
+      const pdf = new jsPDF({ orientation: 'portrait', unit: 'pt', format: 'a4' })
+      const pageW = pdf.internal.pageSize.getWidth()
+      const pageH = pdf.internal.pageSize.getHeight()
+      const margin = 48
+      const maxW = pageW - margin * 2
+      let y = 56
+
+      // Helper: strip inline markdown
+      const strip = (s: string) =>
+        s.replace(/\*\*(.*?)\*\*/g, '$1')
+         .replace(/\*(.*?)\*/g, '$1')
+         .replace(/_(.*?)_/g, '$1')
+         .replace(/`([^`]+)`/g, '$1')
+         .replace(/~~(.*?)~~/g, '$1')
+         .trim()
+
+      // Header bar
+      pdf.setFillColor(249, 115, 22)
+      pdf.rect(0, 0, pageW, 36, 'F')
+      pdf.setTextColor(255, 255, 255)
+      pdf.setFontSize(11)
+      pdf.setFont('helvetica', 'bold')
+      pdf.text('AxomPrep \u2014 Coach Response', margin, 24)
+      pdf.setTextColor(40, 40, 40)
+
+      const addPage = () => { pdf.addPage(); y = margin }
+      const checkY = (needed: number) => { if (y + needed > pageH - margin) addPage() }
+
+      // Pre-process: group table rows into blocks
+      const rawLines = content.split('\n')
+      type Block =
+        | { type: 'line'; text: string }
+        | { type: 'table'; rows: string[][] }
+
+      const blocks: Block[] = []
+      let i = 0
+      while (i < rawLines.length) {
+        const raw = rawLines[i]
+        // Detect table row: starts and ends with |
+        if (/^\s*\|/.test(raw)) {
+          const tableRows: string[][] = []
+          while (i < rawLines.length && /^\s*\|/.test(rawLines[i])) {
+            const row = rawLines[i]
+            // Skip separator rows like |---|---|
+            if (/^\s*\|[\s|:-]+\|/.test(row) && !/[a-zA-Z0-9]/.test(row)) {
+              i++; continue
+            }
+            const cells = row
+              .replace(/^\s*\|/, '')
+              .replace(/\|\s*$/, '')
+              .split('|')
+              .map(c => strip(c))
+            tableRows.push(cells)
+            i++
+          }
+          if (tableRows.length > 0) blocks.push({ type: 'table', rows: tableRows })
+          continue
+        }
+        blocks.push({ type: 'line', text: raw })
+        i++
+      }
+
+      // Render blocks
+      for (const block of blocks) {
+        if (block.type === 'table') {
+          const rows = block.rows
+          if (rows.length === 0) continue
+          const cols = rows[0].length
+          const colW = maxW / cols
+          const rowH = 20
+          checkY(rows.length * rowH + 8)
+
+          rows.forEach((row, ri) => {
+            // Header row: orange bg, white text
+            if (ri === 0) {
+              pdf.setFillColor(249, 115, 22)
+              pdf.rect(margin, y - 13, maxW, rowH, 'F')
+              pdf.setTextColor(255, 255, 255)
+              pdf.setFont('helvetica', 'bold')
+              pdf.setFontSize(9)
+            } else {
+              // Alternating rows
+              if (ri % 2 === 0) pdf.setFillColor(255, 247, 237) // orange-50
+              else pdf.setFillColor(255, 255, 255)
+              pdf.rect(margin, y - 13, maxW, rowH, 'F')
+              pdf.setTextColor(50, 50, 50)
+              pdf.setFont('helvetica', 'normal')
+              pdf.setFontSize(9)
+            }
+            // Cell borders
+            pdf.setDrawColor(230, 180, 140)
+            pdf.setLineWidth(0.5)
+            row.forEach((cell, ci) => {
+              const x = margin + ci * colW
+              pdf.rect(x, y - 13, colW, rowH, 'S')
+              pdf.text(cell, x + 5, y, { maxWidth: colW - 10 })
+            })
+            y += rowH
+          })
+          y += 8
+          continue
+        }
+
+        // It's a line block
+        const raw = block.text
+        const line = raw.trimEnd()
+
+        // Blank line
+        if (line.trim() === '') { y += 5; continue }
+
+        // Horizontal rule ---
+        if (/^[-*_]{3,}$/.test(line.trim())) {
+          checkY(12)
+          pdf.setDrawColor(249, 115, 22)
+          pdf.setLineWidth(0.75)
+          pdf.line(margin, y - 4, pageW - margin, y - 4)
+          y += 10
+          continue
+        }
+
+        // H1
+        if (/^# /.test(line)) {
+          checkY(28)
+          pdf.setFont('helvetica', 'bold'); pdf.setFontSize(16); pdf.setTextColor(20, 20, 20)
+          const w = pdf.splitTextToSize(strip(line.replace(/^# /, '')), maxW)
+          pdf.text(w, margin, y); y += w.length * 20 + 4
+          pdf.setDrawColor(249, 115, 22); pdf.setLineWidth(1.5)
+          pdf.line(margin, y, pageW - margin, y); y += 10
+          continue
+        }
+        // H2
+        if (/^## /.test(line)) {
+          checkY(22)
+          pdf.setFont('helvetica', 'bold'); pdf.setFontSize(13); pdf.setTextColor(20, 20, 20)
+          const w = pdf.splitTextToSize(strip(line.replace(/^## /, '')), maxW)
+          pdf.text(w, margin, y); y += w.length * 17 + 6
+          continue
+        }
+        // H3
+        if (/^### /.test(line)) {
+          checkY(18)
+          pdf.setFont('helvetica', 'bold'); pdf.setFontSize(11); pdf.setTextColor(80, 80, 80)
+          const w = pdf.splitTextToSize(strip(line.replace(/^### /, '')), maxW)
+          pdf.text(w, margin, y); y += w.length * 15 + 4
+          continue
+        }
+        // H4
+        if (/^#### /.test(line)) {
+          checkY(16)
+          pdf.setFont('helvetica', 'bold'); pdf.setFontSize(10); pdf.setTextColor(100, 100, 100)
+          const w = pdf.splitTextToSize(strip(line.replace(/^#### /, '')), maxW)
+          pdf.text(w, margin, y); y += w.length * 14 + 2
+          continue
+        }
+        // Sub-bullet (indented * or -)
+        if (/^ {2,}[*-] /.test(line)) {
+          checkY(13)
+          pdf.setFont('helvetica', 'normal'); pdf.setFontSize(9.5); pdf.setTextColor(80, 80, 80)
+          pdf.text('\u25e6', margin + 20, y)
+          const w = pdf.splitTextToSize(strip(line.replace(/^ {2,}[*-] /, '')), maxW - 30)
+          pdf.text(w, margin + 30, y); y += w.length * 13
+          continue
+        }
+        // Bullet
+        if (/^[-*\u2022] /.test(line)) {
+          checkY(14)
+          pdf.setFont('helvetica', 'normal'); pdf.setFontSize(10); pdf.setTextColor(60, 60, 60)
+          pdf.text('\u2022', margin + 4, y)
+          const w = pdf.splitTextToSize(strip(line.replace(/^[-*\u2022] /, '')), maxW - 14)
+          pdf.text(w, margin + 14, y); y += w.length * 13 + 2
+          continue
+        }
+        // Numbered list
+        if (/^\d+\. /.test(line)) {
+          const num = line.match(/^(\d+)\. /)?.[1] ?? ''
+          checkY(14)
+          pdf.setFont('helvetica', 'normal'); pdf.setFontSize(10); pdf.setTextColor(60, 60, 60)
+          pdf.text(`${num}.`, margin + 2, y)
+          const w = pdf.splitTextToSize(strip(line.replace(/^\d+\. /, '')), maxW - 16)
+          pdf.text(w, margin + 16, y); y += w.length * 13 + 2
+          continue
+        }
+        // Regular paragraph
+        checkY(14)
+        pdf.setFont('helvetica', 'normal'); pdf.setFontSize(10); pdf.setTextColor(60, 60, 60)
+        const w = pdf.splitTextToSize(strip(line), maxW)
+        pdf.text(w, margin, y); y += w.length * 13 + 2
+      }
+
+      // Footer
+      const total = (pdf.internal as any).getNumberOfPages()
+      for (let p = 1; p <= total; p++) {
+        pdf.setPage(p)
+        pdf.setFontSize(8); pdf.setTextColor(180, 180, 180)
+        pdf.text(`Generated by AxomPrep \u2022 Page ${p} of ${total}`, margin, pageH - 20)
+      }
+
+      pdf.save(`AxomPrep-Lesson-${Date.now()}.pdf`)
+    } catch (err) { console.error('PDF failed:', err) }
+    setIsDownloading(false)
+  }
+
+
+  return (
+    <button
+      onClick={handleDownload}
+      disabled={isDownloading}
+      className="flex items-center gap-1.5 text-[10px] font-black uppercase tracking-widest text-orange-500/80 hover:text-orange-600 transition-all group px-2.5 py-1.5 rounded-xl hover:bg-orange-50/50 disabled:opacity-50"
+    >
+      {isDownloading ? <Loader2 className="w-3 h-3 animate-spin" /> : <FileText className="w-3 h-3 transition-transform group-hover:-translate-y-0.5" />}
+      <span>{isDownloading ? 'Generating...' : 'PDF'}</span>
+    </button>
+  )
+}
+
+
+// ── Generate Infographic Button ─────────────────────────────────────────
+function GenerateImageButton({ content, topic }: { content: string, topic: string }) {
+  const [isGenerating, setIsGenerating] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  const handleGenerate = async () => {
+    setIsGenerating(true)
+    setError(null)
+    try {
+      const res = await fetch('/api/generate-infographic', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ content, topic }),
+      })
+
+      const data = await res.json()
+
+      if (!res.ok) {
+        setError(data.error || 'Failed to generate image')
+        return
+      }
+
+      // Auto-download the image
+      const link = document.createElement('a')
+      link.href = `data:${data.mimeType};base64,${data.image}`
+      link.download = `AxomPrep-Infographic-${Date.now()}.png`
+      document.body.appendChild(link)
+      link.click()
+      document.body.removeChild(link)
+    } catch (err) {
+      setError('Something went wrong. Try again.')
+    }
+    setIsGenerating(false)
+  }
+
+  return (
+    <div className="flex flex-col items-end">
+      <button
+        onClick={handleGenerate}
+        disabled={isGenerating}
+        className="flex items-center gap-1.5 text-[10px] font-black uppercase tracking-widest text-purple-500/80 hover:text-purple-600 transition-all group px-2.5 py-1.5 rounded-xl hover:bg-purple-50/50 disabled:opacity-50"
+      >
+        {isGenerating
+          ? <Loader2 className="w-3 h-3 animate-spin" />
+          : <ImageIcon className="w-3 h-3 transition-transform group-hover:scale-110" />}
+        <span>{isGenerating ? 'Creating...' : 'Infographic'}</span>
+      </button>
+      {error && <p className="text-[9px] text-red-400 font-medium mt-0.5 pr-1">{error}</p>}
+    </div>
+  )
+}
+
 
 function addWavHeader(pcmData: ArrayBuffer, sampleRate: number) {
   const header = new ArrayBuffer(44)
@@ -719,9 +1021,18 @@ export default function CoachChatClient({
                   : 'bg-white rounded-2xl rounded-tl-md px-4 sm:px-5 py-4 border border-zinc-100 shadow-sm'
                 }`}>
                   {msg.role === 'assistant' ? (
-                    <div className="prose prose-sm prose-zinc max-w-none prose-headings:font-bold prose-headings:text-black prose-p:text-zinc-600 prose-p:leading-relaxed prose-a:text-orange-500 prose-strong:text-zinc-800 prose-code:text-orange-600 prose-code:bg-orange-50 prose-code:px-1 prose-code:py-0.5 prose-code:rounded">
-                      <ReactMarkdown remarkPlugins={[remarkGfm]}>{msg.content}</ReactMarkdown>
-                    </div>
+                    <>
+                      <div id={`msg-${i}`} className="prose prose-sm prose-zinc max-w-none prose-headings:font-bold prose-headings:text-black prose-p:text-zinc-600 prose-p:leading-relaxed prose-a:text-orange-500 prose-strong:text-zinc-800 prose-code:text-orange-600 prose-code:bg-orange-50 prose-code:px-1 prose-code:py-0.5 prose-code:rounded">
+                        <ReactMarkdown remarkPlugins={[remarkGfm]}>{msg.content}</ReactMarkdown>
+                      </div>
+                      <div className="mt-2 flex justify-end items-center gap-1">
+                        <CopyButton text={msg.content} />
+                        <span className="w-1 h-1 rounded-full bg-zinc-200" />
+                        <DownloadPDFButton messageId={i.toString()} content={msg.content} />
+                        <span className="w-1 h-1 rounded-full bg-zinc-200" />
+                        <GenerateImageButton content={msg.content} topic={coach.topic} />
+                      </div>
+                    </>
                   ) : (
                     <p className="text-sm font-medium leading-relaxed">{msg.content}</p>
                   )}
@@ -787,7 +1098,7 @@ export default function CoachChatClient({
                   {isGeneratingQuiz ? (
                     <Loader2 className="w-3.5 h-3.5 animate-spin" />
                   ) : (
-                    <BrainCircuit className="w-3.5 h-3.5 group-hover:rotate-12 transition-transform" />
+                    <Gamepad2 className="w-3.5 h-3.5 group-hover:rotate-12 transition-transform" />
                   )}
                   {isGeneratingQuiz ? 'Generating Quiz...' : 'Generate Quiz'}
                 </button>

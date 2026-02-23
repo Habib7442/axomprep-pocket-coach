@@ -38,10 +38,10 @@ export async function POST(req: NextRequest) {
 
     if (!coach) return Response.json({ error: 'Forbidden' }, { status: 403 })
 
-    // Fetch user profile for language and credits
+    // Fetch user profile for language, credits, and tier
     const { data: profile, error: profileError } = await supabase
       .from('profiles')
-      .select('native_language, credits')
+      .select('native_language, credits, tier')
       .eq('id', user.id)
       .single()
 
@@ -51,19 +51,19 @@ export async function POST(req: NextRequest) {
 
     const lang = profile?.native_language || coach.language || 'english'
 
-    // Atomic credit check and deduction BEFORE AI call
-    // Atomic credit check and deduction BEFORE AI call
-    const { data: success, error: rpcError } = await supabase.rpc('deduct_credit', { 
-      user_id: user.id,
-      amount: 1 
-    })
-    
-    if (rpcError || !success) {
-      return Response.json({ 
-        error: 'You\'ve run out of credits! Upgrade your plan to keep chatting.',
-        errorCode: 'NO_CREDITS',
-        credits: profile?.credits || 0
-      }, { status: 403 })
+    // Pro users get unlimited access — only deduct for free users
+    if (profile?.tier !== 'pro') {
+      const { data: success, error: rpcError } = await supabase.rpc('deduct_credit', { 
+        user_id: user.id,
+        amount: 1 
+      })
+      if (rpcError || !success) {
+        return Response.json({ 
+          error: 'You\'ve run out of credits! Upgrade your plan to keep chatting.',
+          errorCode: 'NO_CREDITS',
+          credits: profile?.credits || 0
+        }, { status: 403 })
+      }
     }
 
     const ai = new GoogleGenAI({ apiKey: API_KEY })
