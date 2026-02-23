@@ -21,6 +21,19 @@ export async function POST(req: NextRequest) {
     if (!mode || typeof mode !== 'string') return NextResponse.json({ error: 'Valid mode is required' }, { status: 400 })
     if (language && typeof language !== 'string') return NextResponse.json({ error: 'Language must be a string' }, { status: 400 })
 
+    // Atomic credit check and deduction for premium audio (5 credits)
+    const { data: success, error: rpcError } = await supabase.rpc('deduct_credit', { 
+      user_id: user.id,
+      amount: 5 
+    })
+    
+    if (rpcError || !success) {
+      return NextResponse.json({ 
+        error: 'Insufficient credits (5 required for story/podcast generation). Upgrade your plan to keep creating.',
+        errorCode: 'NO_CREDITS'
+      }, { status: 403 })
+    }
+
     const ai = new GoogleGenAI({ apiKey: API_KEY })
 
     // Generate a conversational script first — targeting 8-10 min of spoken audio (~1,200-1,500 words)

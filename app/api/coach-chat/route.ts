@@ -37,7 +37,10 @@ export async function POST(req: NextRequest) {
     }
 
     // Atomic credit check and deduction BEFORE AI call
-    const { data: success, error: rpcError } = await supabase.rpc('deduct_credit', { user_id: user.id })
+    const { data: success, error: rpcError } = await supabase.rpc('deduct_credit', { 
+      user_id: user.id,
+      amount: 1 
+    })
     
     if (rpcError || !success) {
       return NextResponse.json({ 

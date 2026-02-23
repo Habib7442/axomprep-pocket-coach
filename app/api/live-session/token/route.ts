@@ -39,6 +39,7 @@ export async function POST(req: NextRequest) {
   // Atomically deduct 1 credit (uses RPC so there's no race condition)
   const { data: success, error: rpcError } = await supabase.rpc('deduct_credit', {
     user_id: user.id,
+    amount: 1
   });
 
   if (rpcError || !success) {

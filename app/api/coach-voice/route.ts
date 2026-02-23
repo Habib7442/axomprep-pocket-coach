@@ -52,7 +52,11 @@ export async function POST(req: NextRequest) {
     const lang = profile?.native_language || coach.language || 'english'
 
     // Atomic credit check and deduction BEFORE AI call
-    const { data: success, error: rpcError } = await supabase.rpc('deduct_credit', { user_id: user.id })
+    // Atomic credit check and deduction BEFORE AI call
+    const { data: success, error: rpcError } = await supabase.rpc('deduct_credit', { 
+      user_id: user.id,
+      amount: 1 
+    })
     
     if (rpcError || !success) {
       return Response.json({ 
