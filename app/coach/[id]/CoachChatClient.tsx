@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useRef, useEffect } from 'react'
+import { useState, useRef, useEffect, useCallback } from 'react'
 import Link from 'next/link'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
@@ -13,6 +13,7 @@ import {
   AlertDialog, AlertDialogContent, AlertDialogHeader, AlertDialogTitle,
   AlertDialogDescription, AlertDialogFooter, AlertDialogCancel, AlertDialogMedia
 } from '@/components/ui/alert-dialog'
+import { GoogleGenAI, Modality } from '@google/genai'
 
 interface Message {
   id?: string
@@ -175,39 +176,301 @@ export default function CoachChatClient({
     }
   }
 
-  // Real-time voice states
+  // ======== REAL-TIME VOICE STATE ========
   const [isVoiceActive, setIsVoiceActive] = useState(false)
   const [isVoiceConnecting, setIsVoiceConnecting] = useState(false)
   const [voiceError, setVoiceError] = useState<string | null>(null)
   const [voiceTranscripts, setVoiceTranscripts] = useState<{ text: string; isUser: boolean }[]>([])
 
-  // Real-time voice refs
-  const mediaRecorderRef = useRef<MediaRecorder | null>(null)
-  const audioChunksRef = useRef<Blob[]>([])
-  const currentAudioRef = useRef<HTMLAudioElement | null>(null)
+  // Gemini Live session + audio refs
+  const sessionRef = useRef<any>(null)
+  const inputAudioCtxRef = useRef<AudioContext | null>(null)  // 16kHz mic input
+  const outputAudioCtxRef = useRef<AudioContext | null>(null) // 24kHz AI output
+  const streamRef = useRef<MediaStream | null>(null)
+  const processorRef = useRef<ScriptProcessorNode | null>(null)
+  const audioQueueRef = useRef<Int16Array[]>([])
+  const isPlayingRef = useRef(false)
+  const nextPlayTimeRef = useRef(0)       // wall-clock time for next buffer
+  const aiTurnTextRef = useRef('')        // accumulate AI speech text
+  const scheduledSourcesRef = useRef<AudioBufferSourceNode[]>([])
+  // Live status label (not transcript - just what the AI is saying right now)
+  const [voiceStatusText, setVoiceStatusText] = useState('')
 
   useEffect(() => {
     chatEndRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [messages])
 
-  // Check chat limit when messages change
   useEffect(() => {
-    if (messages.length >= MAX_MESSAGES) {
-      setChatLimitReached(true)
-    }
+    if (messages.length >= MAX_MESSAGES) setChatLimitReached(true)
   }, [messages])
 
-  // Show no-credits dialog when credits hit 0
   useEffect(() => {
-    if (credits <= 0) {
-      setShowNoCreditsDialog(true)
-    }
+    if (credits <= 0) setShowNoCreditsDialog(true)
   }, [credits])
 
-  // Cleanup voice on unmount
-  useEffect(() => {
-    return () => stopVoiceSession()
+  // ── TRUE GAPLESS audio scheduling (pre-schedule buffers into the future) ──
+  const enqueueAudio = useCallback((pcm: Int16Array) => {
+    const ctx = outputAudioCtxRef.current
+    if (!ctx) return
+
+    // Resume if browser suspended it
+    if (ctx.state === 'suspended') ctx.resume()
+
+    const buffer = ctx.createBuffer(1, pcm.length, 24000)
+    const ch = buffer.getChannelData(0)
+    for (let i = 0; i < pcm.length; i++) {
+      ch[i] = pcm[i] / 32768.0
+    }
+
+    const src = ctx.createBufferSource()
+    src.buffer = buffer
+    src.connect(ctx.destination)
+
+    // Schedule at the correct wall-clock time so there is ZERO gap
+    const now = ctx.currentTime
+    if (nextPlayTimeRef.current < now + 0.01) {
+      // We've fallen behind (or just starting) — schedule with a tiny 50ms buffer
+      nextPlayTimeRef.current = now + 0.05
+    }
+    src.start(nextPlayTimeRef.current)
+    nextPlayTimeRef.current += buffer.duration   // advance pointer exactly
+
+    scheduledSourcesRef.current.push(src)
+    src.onended = () => {
+      scheduledSourcesRef.current = scheduledSourcesRef.current.filter(s => s !== src)
+    }
   }, [])
+
+  // ── Stop / cleanup ────────────────────────────────────────────────────────
+  const stopVoiceSession = useCallback(() => {
+    streamRef.current?.getTracks().forEach(t => t.stop())
+    streamRef.current = null
+    processorRef.current?.disconnect()
+    processorRef.current = null
+    inputAudioCtxRef.current?.close().catch(() => {})
+    inputAudioCtxRef.current = null
+    
+    // Cancel all pre-scheduled audio immediately
+    scheduledSourcesRef.current.forEach(src => { try { src.stop(); } catch {} })
+    scheduledSourcesRef.current = []
+    
+    outputAudioCtxRef.current?.close().catch(() => {})
+    outputAudioCtxRef.current = null
+    if (sessionRef.current) {
+      try { sessionRef.current.close(); } catch {}
+      sessionRef.current = null;
+    }
+    nextPlayTimeRef.current = 0
+    aiTurnTextRef.current = ''
+    setVoiceStatusText('')
+    setIsVoiceActive(false)
+    setIsVoiceConnecting(false)
+  }, [])
+
+  useEffect(() => () => stopVoiceSession(), [stopVoiceSession])
+
+  // ── Start mic streaming ───────────────────────────────────────────────────
+  const startMicStream = useCallback((stream: MediaStream, inputCtx: AudioContext) => {
+    if (inputCtx.state === 'suspended') inputCtx.resume()
+    const source = inputCtx.createMediaStreamSource(stream)
+    const processor = inputCtx.createScriptProcessor(4096, 1, 1)
+    processorRef.current = processor
+
+    processor.onaudioprocess = (e) => {
+      if (!sessionRef.current) return
+      const float32 = e.inputBuffer.getChannelData(0)
+      const pcm16 = new Int16Array(float32.length)
+      for (let i = 0; i < float32.length; i++) {
+        const s = Math.max(-1, Math.min(1, float32[i]))
+        pcm16[i] = s < 0 ? s * 0x8000 : s * 0x7FFF
+      }
+      // Safe base64 conversion (avoids stack overflow with large buffers from spread operator)
+      try {
+        const uint8 = new Uint8Array(pcm16.buffer);
+        let binary = '';
+        for (let i = 0; i < uint8.byteLength; i++) {
+          binary += String.fromCharCode(uint8[i]);
+        }
+        sessionRef.current.sendRealtimeInput({
+          media: { data: btoa(binary), mimeType: 'audio/pcm;rate=16000' }
+        })
+      } catch {}
+    }
+
+    source.connect(processor)
+    
+    // Create a silent gain node to keep the processor alive without feeding mic audio to speakers (Double Voice fix)
+    const silentGain = inputCtx.createGain()
+    silentGain.gain.value = 0
+    processor.connect(silentGain)
+    silentGain.connect(inputCtx.destination)
+  }, [])
+
+
+  // ─── Start live voice session (Standard Live SDK Pattern) ────────────────
+  const startVoiceSession = async () => {
+    if (isVoiceConnecting || isVoiceActive) return
+    if (credits <= 0) { setShowNoCreditsDialog(true); return }
+    
+    // 1. Ensure any previous session is cleaned up first
+    stopVoiceSession();
+    
+    setIsVoiceConnecting(true)
+    setVoiceError(null)
+    setVoiceTranscripts([])
+    setVoiceStatusText('Connecting...')
+    aiTurnTextRef.current = ''
+
+    // 2. Get ephemeral token (server deducts 1 credit atomically)
+    let ephemeralToken: string;
+    try {
+      const res = await fetch('/api/live-session/token', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ 
+          coachName: coach.name, 
+          topic: coach.topic, 
+          language: userLanguage 
+        }),
+      });
+      const data = await res.json();
+
+      // Handle no-credits case specifically
+      if (data.errorCode === 'NO_CREDITS') {
+        setCredits(data.credits ?? 0);
+        setIsVoiceConnecting(false);
+        setVoiceStatusText('');
+        setShowNoCreditsDialog(true);
+        return;
+      }
+
+      if (!res.ok || !data.token) throw new Error(data.error || 'Failed to authenticate.');
+      ephemeralToken = data.token;
+
+      // Update credit display immediately after deduction
+      if (typeof data.credits === 'number') {
+        setCredits(data.credits);
+      }
+    } catch (err: any) {
+      setVoiceError(err.message || 'Connection failed.');
+      setIsVoiceConnecting(false);
+      return;
+    }
+
+    // 2. Request microphone
+    let stream: MediaStream
+    try {
+      stream = await navigator.mediaDevices.getUserMedia({ 
+        audio: { sampleRate: 16000, channelCount: 1, echoCancellation: true } 
+      })
+      streamRef.current = stream
+    } catch {
+      setVoiceError('Microphone access denied.')
+      setIsVoiceConnecting(false)
+      return
+    }
+
+    // 3. Setup Audio
+    const inputCtx = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 16000 })
+    inputAudioCtxRef.current = inputCtx
+    const outputCtx = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 24000 })
+    outputAudioCtxRef.current = outputCtx
+
+    // 4. Connect to Gemini Live
+    try {
+      const ai = new GoogleGenAI({ 
+        apiKey: ephemeralToken,
+        //@ts-ignore
+        httpOptions: { apiVersion: 'v1alpha' }
+      });
+
+      const session = await ai.live.connect({
+        model: 'gemini-2.5-flash-native-audio-preview-09-2025',
+        config: { 
+          responseModalities: [Modality.AUDIO],
+          speechConfig: {
+            voiceConfig: { prebuiltVoiceConfig: { voiceName: "Puck" } },
+          },
+          outputAudioTranscription: {},
+          inputAudioTranscription: {},
+        },
+        callbacks: {
+          onopen: () => {
+            setIsVoiceConnecting(false)
+            setIsVoiceActive(true)
+            setVoiceTranscripts([{ text: "Connected! You can start speaking.", isUser: false }])
+            
+            // Ensure audio contexts are running
+            if (inputCtx.state === 'suspended') inputCtx.resume();
+            if (outputCtx.state === 'suspended') outputCtx.resume();
+            setVoiceStatusText('Listening...')
+            startMicStream(stream, inputCtx)
+          },
+          onmessage: (msg: any) => {
+            // ── Barge-in: AI interrupted ──────────────────────────────────
+            if (msg.serverContent?.interrupted) {
+              // Cancel all pre-scheduled future audio
+              scheduledSourcesRef.current.forEach(src => { try { src.stop(); } catch {} })
+              scheduledSourcesRef.current = []
+              nextPlayTimeRef.current = 0
+              aiTurnTextRef.current = ''
+              setVoiceStatusText('Listening...')
+              return
+            }
+
+            // ── Decode and schedule every audio part from this message ────
+            const parts = msg.serverContent?.modelTurn?.parts || [];
+            let gotAudio = false;
+            for (const part of parts) {
+              const b64 = part.inlineData?.data;
+              if (b64) {
+                const binaryString = atob(b64);
+                const len = binaryString.length;
+                const view = new DataView(new ArrayBuffer(len));
+                for (let j = 0; j < len; j++) {
+                  (new Uint8Array(view.buffer))[j] = binaryString.charCodeAt(j);
+                }
+                const pcm = new Int16Array(len / 2);
+                for (let j = 0; j < pcm.length; j++) {
+                  pcm[j] = view.getInt16(j * 2, true);
+                }
+                enqueueAudio(pcm);  // schedule directly — no queue polling needed
+                gotAudio = true;
+              }
+              if (part.text) aiTurnTextRef.current += part.text;
+            }
+
+            // Show what the AI is saying
+            if (gotAudio) setVoiceStatusText('Speaking...')
+
+            // outputTranscription is the definitive speech text
+            const outTx = msg.serverContent?.outputTranscription?.text;
+            if (outTx) {
+              aiTurnTextRef.current = outTx; // use transcription as source of truth
+            }
+
+            if (msg.serverContent?.turnComplete) {
+              aiTurnTextRef.current = '';
+              setVoiceStatusText('Listening...')
+            }
+          },
+          onerror: (err: any) => {
+            console.error('Session error:', err);
+            setVoiceError('Connection error. Please try again.');
+            stopVoiceSession();
+          },
+          onclose: () => {
+             stopVoiceSession();
+          }
+        }
+      });
+      sessionRef.current = session;
+    } catch (err: any) {
+      console.error('Connect failed:', err);
+      setVoiceError('Failed to establish voice connection.');
+      stopVoiceSession();
+    }
+  }
 
   // ======== LOAD OLDER MESSAGES ========
   const loadOlderMessages = async () => {
@@ -223,14 +486,10 @@ export default function CoachChatClient({
       const data = await res.json()
 
       if (data.messages && data.messages.length > 0) {
-        // Preserve scroll position
         const container = chatContainerRef.current
         const prevHeight = container?.scrollHeight || 0
-
         setMessages(prev => [...data.messages, ...prev])
         setHasMore(data.hasMore)
-
-        // Restore scroll position after prepending
         requestAnimationFrame(() => {
           if (container) {
             const newHeight = container.scrollHeight
@@ -264,9 +523,9 @@ export default function CoachChatClient({
 
       if (data.errorCode === 'NO_CREDITS') {
         setCredits(0)
-        setMessages(prev => [...prev, { 
-          role: 'assistant', 
-          content: '⚠️ You\'ve run out of credits! Please upgrade your plan to continue chatting.' 
+        setMessages(prev => [...prev, {
+          role: 'assistant',
+          content: '⚠️ You\'ve run out of credits! Please upgrade your plan to continue chatting.'
         }])
       } else if (data.reply) {
         setMessages(prev => [...prev, { role: 'assistant', content: data.reply }])
@@ -284,32 +543,43 @@ export default function CoachChatClient({
     if (!allContent) return
     setIsGeneratingAudio(true)
     try {
+      const { toast } = await import('sonner')
       const res = await fetch('/api/coach-tts', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ text: allContent, mode: audioMode, language: userLanguage })
       })
       const data = await res.json()
-      if (data.audio) {
-        const binaryString = window.atob(data.audio)
-        const len = binaryString.length
-        const bytes = new Uint8Array(len)
-        for (let i = 0; i < len; i++) bytes[i] = binaryString.charCodeAt(i)
-        const wavBuffer = addWavHeader(bytes.buffer, 24000)
-        const blob = new Blob([wavBuffer], { type: 'audio/wav' })
-        if (audioUrl) URL.revokeObjectURL(audioUrl)
-        const url = URL.createObjectURL(blob)
-        setAudioUrl(url)
-        // Explicitly load the new source in the audio element
-        setTimeout(() => {
-          if (audioRef.current) {
-            audioRef.current.src = url
-            audioRef.current.load()
-          }
-        }, 100)
+      
+      if (!res.ok || !data.audio) {
+        throw new Error(data.error || 'Failed to generate audio. The content might be too long or the server timed out.')
       }
-    } catch (err) { console.error('Audio generation failed:', err) }
-    setIsGeneratingAudio(false)
+
+      const binaryString = window.atob(data.audio)
+      const len = binaryString.length
+      const bytes = new Uint8Array(len)
+      for (let i = 0; i < len; i++) bytes[i] = binaryString.charCodeAt(i)
+      const wavBuffer = addWavHeader(bytes.buffer, 24000)
+      const blob = new Blob([wavBuffer], { type: 'audio/wav' })
+      if (audioUrl) URL.revokeObjectURL(audioUrl)
+      const url = URL.createObjectURL(blob)
+      setAudioUrl(url)
+      
+      setTimeout(() => {
+        if (audioRef.current) {
+          audioRef.current.src = url
+          audioRef.current.load()
+        }
+      }, 100)
+      
+      toast.success(`${audioMode === 'story' ? 'Story' : 'Podcast'} generated successfully!`)
+    } catch (err: any) { 
+      console.error('Audio generation failed:', err)
+      const { toast } = await import('sonner')
+      toast.error(err.message || 'Audio generation failed. Please try again.')
+    } finally {
+      setIsGeneratingAudio(false)
+    }
   }
 
   const togglePlayback = () => {
@@ -317,104 +587,6 @@ export default function CoachChatClient({
       if (isPlaying) audioRef.current.pause()
       else audioRef.current.play()
       setIsPlaying(!isPlaying)
-    }
-  }
-
-  // ======== VOICE SESSION (Request-Response) ========
-  const startVoiceSession = async () => {
-    let stream: MediaStream | null = null
-    try {
-      stream = await navigator.mediaDevices.getUserMedia({ audio: true })
-      const recorder = new MediaRecorder(stream)
-      mediaRecorderRef.current = recorder
-      audioChunksRef.current = []
-
-      recorder.ondataavailable = (e) => {
-        if (e.data.size > 0) audioChunksRef.current.push(e.data)
-      }
-
-      recorder.onstop = async () => {
-        const actualMimeType = recorder.mimeType || 'audio/webm'
-        const audioBlob = new Blob(audioChunksRef.current, { type: actualMimeType })
-        processVoiceAudio(audioBlob)
-      }
-
-      recorder.start()
-      setIsVoiceActive(true)
-      setVoiceTranscripts(prev => [...prev, { text: "Listening...", isUser: false }])
-    } catch (err) {
-      console.error('Mic access error:', err)
-      setVoiceError('Microphone access denied.')
-      // Ensure stream is stopped if it was acquired but recording failed to start
-      if (stream) {
-        stream.getTracks().forEach(t => t.stop())
-      }
-    }
-  }
-
-  const stopVoiceSession = () => {
-    if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
-      mediaRecorderRef.current.stop()
-      mediaRecorderRef.current.stream.getTracks().forEach(t => t.stop())
-    }
-    setIsVoiceActive(false)
-    if (currentAudioRef.current) {
-      currentAudioRef.current.pause()
-      currentAudioRef.current = null
-    }
-  }
-
-  const processVoiceAudio = async (blob: Blob) => {
-    setIsVoiceConnecting(true)
-    try {
-    const base64Audio = await new Promise<string>((resolve, reject) => {
-      const reader = new FileReader()
-      reader.onloadend = () => resolve((reader.result as string).split(',')[1])
-      reader.onerror = () => reject(new Error('Failed to read audio'))
-      reader.readAsDataURL(blob)
-    })
-    
-    const response = await fetch('/api/coach-voice', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        coachId: coach.id,
-        audioBase64: base64Audio,
-        mimeType: blob.type
-      })
-    })
-
-    const data = await response.json()
-    if (!response.ok) {
-      if (data.errorCode === 'NO_CREDITS') {
-        if (typeof data.credits === 'number') setCredits(data.credits)
-        setShowNoCreditsDialog(true)
-        throw new Error(data.error || "Out of credits")
-      }
-      throw new Error(data.error || "Failed to get response")
-    }
-
-    if (data.text) {
-      if (typeof data.credits === 'number') setCredits(data.credits)
-      if (data.userTranscript) {
-        setVoiceTranscripts(prev => [...prev, { text: data.userTranscript, isUser: true }])
-        setMessages(prev => [...prev, { role: 'user', content: data.userTranscript }])
-      }
-      setVoiceTranscripts(prev => [...prev, { text: data.text, isUser: false }])
-      setMessages(prev => [...prev, { role: 'assistant', content: data.text }])
-    }
-    
-    if (data.audio) {
-      const audio = new Audio(`data:audio/wav;base64,${data.audio}`)
-      currentAudioRef.current = audio
-      audio.onended = () => { currentAudioRef.current = null }
-      audio.play()
-    }
-    } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : "Voice processing failed"
-      setVoiceError(message)
-    } finally {
-      setIsVoiceConnecting(false)
     }
   }
 
@@ -759,20 +931,12 @@ export default function CoachChatClient({
               }
             </p>
 
-            {/* Live transcript */}
-            {voiceTranscripts.length > 0 && (
-              <div className="w-full bg-zinc-50 rounded-xl sm:rounded-2xl p-4 mb-5 sm:mb-6 min-h-[80px] max-h-[180px] overflow-y-auto flex flex-col gap-1.5 border border-zinc-100">
-                {voiceTranscripts.map((t, i) => (
-                  <div key={i} className={`text-xs font-medium px-3 py-1.5 rounded-lg max-w-[80%] ${
-                    t.isUser
-                      ? 'bg-gradient-to-r from-orange-100 to-amber-100 self-end text-right text-zinc-700'
-                      : 'bg-white self-start text-left text-zinc-500 border border-zinc-100'
-                  }`}>
-                    {t.text}
-                  </div>
-                ))}
-              </div>
-            )}
+            {/* Status text — clean single line, no chat transcript */}
+            <div className="w-full bg-zinc-50 rounded-xl sm:rounded-2xl px-5 py-4 mb-5 sm:mb-6 min-h-[56px] flex items-center justify-center border border-zinc-100">
+              <p className="text-sm font-medium text-zinc-500 text-center leading-relaxed">
+                {voiceStatusText || (isVoiceActive ? 'Listening...' : isVoiceConnecting ? 'Connecting...' : `Ready to talk about ${coach.topic}`)}
+              </p>
+            </div>
 
             {voiceError && (
               <p className="text-red-500 text-xs font-medium mb-4">{voiceError}</p>
@@ -1064,13 +1228,34 @@ function AudioPanel({
       </div>
 
       {!audioUrl ? (
-        <button
-          onClick={generateAudio}
-          disabled={isGeneratingAudio || !hasMessages}
-          className="w-full py-3.5 rounded-xl bg-gradient-to-r from-orange-500 to-amber-500 text-white font-bold text-sm flex items-center justify-center gap-2 hover:shadow-lg hover:shadow-orange-500/20 hover:scale-[1.02] active:scale-[0.98] transition-all disabled:opacity-20"
-        >
-          {isGeneratingAudio ? <><Loader2 className="w-4 h-4 animate-spin" /> Generating...</> : <><Sparkles className="w-4 h-4" /> Generate {audioMode === 'story' ? 'Story' : 'Podcast'}</>}
-        </button>
+        <div className="space-y-3">
+          <button
+            onClick={generateAudio}
+            disabled={isGeneratingAudio || !hasMessages}
+            className="w-full py-3.5 rounded-xl bg-gradient-to-r from-orange-500 to-amber-500 text-white font-bold text-sm flex items-center justify-center gap-2 hover:shadow-lg hover:shadow-orange-500/20 hover:scale-[1.02] active:scale-[0.98] transition-all disabled:opacity-20"
+          >
+            {isGeneratingAudio ? (
+              <>
+                <Loader2 className="w-4 h-4 animate-spin" />
+                Generating...
+              </>
+            ) : (
+              <>
+                <Sparkles className="w-4 h-4" />
+                Generate {audioMode === 'story' ? 'Story' : 'Podcast'}
+              </>
+            )}
+          </button>
+          
+          {isGeneratingAudio && (
+            <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-blue-50/50 border border-blue-100 animate-in fade-in slide-in-from-top-2 duration-300">
+              <div className="w-1.5 h-1.5 rounded-full bg-blue-400 animate-pulse" />
+              <p className="text-[10px] text-blue-600 font-bold leading-relaxed">
+                As you requested longer audio (8-10 mins), generation will take a few moments. Please have patience while we craft your experience.
+              </p>
+            </div>
+          )}
+        </div>
       ) : (
         <div className="space-y-3">
           <div className="bg-gradient-to-r from-orange-50 to-amber-50 rounded-xl p-3 border border-orange-100">

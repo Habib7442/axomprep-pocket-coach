@@ -529,11 +529,8 @@ export default function CoachClient({ coach, initialMessages, userProfile }: Coa
         topic={coach.topic}
         language={coach.language}
         onTranscription={async (text, role) => {
-          setMessages(prev => {
-            if (prev.length > 0 && prev[prev.length - 1].content === text) return prev;
-            return [...prev, { role, content: text }];
-          });
-          await saveMessage(role, text);
+          // REMOVED: Don't send voice transcripts to chat per user request
+          console.log(`[Voice] ${role}: ${text}`);
         }}
       />
     </div>
