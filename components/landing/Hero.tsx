@@ -19,8 +19,8 @@ export default function Hero({ user }: HeroProps) {
         </div>
 
         <h1 className="text-5xl md:text-7xl font-bold tracking-tighter leading-[0.9] text-black animate-in fade-in slide-in-from-bottom-8 duration-700">
-          Assam's Own <span className="font-serif italic text-orange-500 font-normal">Expert</span> <br />
-          AI Pocket Coach
+          Create <span className="font-serif italic text-orange-500 font-normal">Pocket Coaches</span> <br />
+          in Assam Native Language
         </h1>
 
         <p className="max-w-xl mx-auto text-lg md:text-xl text-zinc-500 leading-relaxed font-medium animate-in fade-in slide-in-from-bottom-12 duration-1000">

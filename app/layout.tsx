@@ -21,8 +21,8 @@ const instrumentSerif = Instrument_Serif({
 
 export const metadata: Metadata = {
   metadataBase: new URL("https://axomprep.in"),
-  title: "Axomprep | Your AI Pocket Coach with Native Assamese Support",
-  description: "The first universal AI coaching platform built for Assam. Learn anything instantly in your native language. Create custom AI coaches for any niche, from academic subjects to professional skills, with full Assamese and English support.",
+  title: "Axomprep | Create Pocket Coaches in Assam Native Language",
+  description: "The first universal AI coaching platform built for Assam. Learn anything instantly in your native language. Create custom AI coaches for any niche, from academic subjects to professional skills, with full Assamese and English support. Powered by Gemini.",
   keywords: [
     "AI coach Assam",
     "Assamese AI tutor", 
@@ -36,8 +36,8 @@ export const metadata: Metadata = {
   ],
   authors: [{ name: "Axomprep Team" }],
   openGraph: {
-    title: "Axomprep | Universal AI Learning for Assam",
-    description: "Learn at your own pace in your own language. Create custom AI coaches and master any topic with Assam's first native-support AI platform.",
+    title: "Axomprep | Create Pocket Coaches in Assam Native Language",
+    description: "Learn at your own pace in your own language. Create custom AI coaches and master any topic with Assam's first native-support AI platform. Powered by Gemini.",
     url: "https://axomprep.in",
     siteName: "Axomprep",
     images: [
@@ -53,8 +53,8 @@ export const metadata: Metadata = {
   },
   twitter: {
     card: "summary_large_image",
-    title: "Axomprep | Assam's Own AI Pocket Coach",
-    description: "Master any subject with custom AI coaches that speak your language. Built specifically for students and learners in Assam.",
+    title: "Axomprep | Create Pocket Coaches in Assam Native Language",
+    description: "Master any subject with custom AI coaches that speak your language. Powered by Gemini.",
     images: ["/og-image.png"],
   },
   icons: {

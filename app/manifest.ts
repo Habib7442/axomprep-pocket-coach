@@ -4,7 +4,7 @@ export default function manifest(): MetadataRoute.Manifest {
   return {
     name: 'AxomPrep',
     short_name: 'AxomPrep',
-    description: "The first universal AI coaching platform built for Assam. Learn anything instantly in your native language.",
+    description: "Create custom AI pocket coaches in Assam native language. Powered by Gemini.",
     start_url: '/',
     display: 'standalone',
     background_color: '#ffffff',

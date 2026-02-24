@@ -60,7 +60,7 @@ export default function Footer() {
             © 2026 Axomprep. All rights reserved.
           </p>
           <p className="text-zinc-400 text-[10px] font-black uppercase tracking-[0.3em]">
-            Created for the future of Assam.
+            Powered by Gemini
           </p>
         </div>
       </div>
